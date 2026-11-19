@@ -10,7 +10,7 @@ powershell -ExecutionPolicy Bypass -File scripts\demo\open-views.ps1
 | File | What it does |
 |---|---|
 | `mkt-view.sh` | Read-only snapshot from one machine: managers, services, every API copy, containers on this machine, which API slots this VM's HAProxy sees UP, the live feed, recent events, NetBird peers. Refreshed every second by `watch`. |
-| `open-views.ps1` | Copies `mkt-view.sh` to `/tmp` on all three machines and opens the windows side by side. |
+| `open-views.ps1` | Copies `mkt-view.sh` to `/var/tmp` on all three machines and opens the windows side by side. |
 | `control-panel.ps1` | Menu. **S** status (managers, leader, placement); **D** open both dashboards; **1–5** stop api-3, api-1, the generator, Redis, or Hyderabad's HAProxy; **6** rolling restart; **7/8** drain or reactivate Hyderabad (a lost VM); **9/10** stop or start the voter's Docker (2 of 3 managers still form a majority). Swarm commands go to whichever manager answers first, so the panel still works if Mumbai is down. Touches only the market lab. |
 | `common.ps1` | Reads `scripts/.env` and defines the SSH helpers. |
 

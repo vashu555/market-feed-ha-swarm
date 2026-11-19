@@ -4,18 +4,22 @@
 $view = Join-Path $PSScriptRoot "mkt-view.sh"
 $titles = "MUMBAI VM", "HYDERABAD VM", "MICRO VM (votes only)", "CONTROL PANEL"
 
-# 1. Copy the view script to /tmp on all three machines (strip Windows line endings on the way).
+# 1. Copy the view script to /var/tmp on all three machines (survives reboots; strip Windows line endings).
 foreach ($node in $cfg.MUMBAI_NODE, $cfg.HYDERABAD_NODE, $cfg.MICRO_NODE) {
-  Get-Content -Raw $view | & $ssh -o ConnectTimeout=10 -i $hosts[$node][0] $hosts[$node][1] "tr -d '\r' > /tmp/mkt-view.sh"
+  Get-Content -Raw $view | & $ssh -o ConnectTimeout=10 -i $hosts[$node][0] $hosts[$node][1] "tr -d '\r' > /var/tmp/mkt-view.sh"
 }
-# 2. Close any earlier copies of these windows (only ssh processes running the view, and windows with our titles).
-Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'ssh.exe' -and $_.CommandLine -like '*mkt-view*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# 2. Close any earlier copies. Windows first (their reconnect loops would otherwise restart the views), then leftover ssh views.
 Get-Process cmd, powershell -ErrorAction SilentlyContinue | Where-Object { $titles -contains $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*mkt-*.cmd*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'ssh.exe' -and $_.CommandLine -like '*mkt-view*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
+# Each view reconnects by itself: keep-alives notice a dead link within ~15 s, then the .cmd loop retries every 3 s.
+$opts = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ConnectTimeout=10"
+$view = "sudo watch -n 1 -t bash /var/tmp/mkt-view.sh"   # (reused name: the local file was already copied above)
 $panes = @(
-  @{ name = "1-mumbai";    title = $titles[0]; cmd = "`"$ssh`" -t -i `"$($cfg.MUMBAI_KEY)`" $($cfg.MUMBAI_HOST) `"sudo watch -n 1 -t bash /tmp/mkt-view.sh`"" },
-  @{ name = "2-hyderabad"; title = $titles[1]; cmd = "`"$ssh`" -t -i `"$($cfg.HYDERABAD_KEY)`" $($cfg.HYDERABAD_HOST) `"sudo watch -n 1 -t bash /tmp/mkt-view.sh`"" },
-  @{ name = "3-micro";     title = $titles[2]; cmd = "`"$ssh`" -t -i `"$($cfg.MICRO_KEY)`" $($cfg.MICRO_HOST) `"sudo watch -n 1 -t bash /tmp/mkt-view.sh`"" }
+  @{ name = "1-mumbai";    title = $titles[0]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.MUMBAI_KEY)`" $($cfg.MUMBAI_HOST) `"$view`"" },
+  @{ name = "2-hyderabad"; title = $titles[1]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.HYDERABAD_KEY)`" $($cfg.HYDERABAD_HOST) `"$view`"" },
+  @{ name = "3-micro";     title = $titles[2]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.MICRO_KEY)`" $($cfg.MICRO_HOST) `"$view`"" }
 )
 
 Add-Type @"
@@ -37,7 +41,7 @@ function Place($proc, $x, $y, $width, $height, $label) {
 $i = 0
 foreach ($p in $panes) {
   $bat = Join-Path $env:TEMP "mkt-$($p.name).cmd"
-  Set-Content -Path $bat -Encoding ascii -Value @("@echo off", "title $($p.title)", $p.cmd, "echo.", "echo [view ended - press any key to close]", "pause >nul")
+  Set-Content -Path $bat -Encoding ascii -Value @("@echo off", "title $($p.title)", ":loop", $p.cmd, "echo.", "echo [connection lost at %TIME% - reconnecting in 3 s; close this window to stop]", "timeout /t 3 /nobreak >nul", "goto loop")
   $proc = Start-Process cmd.exe -ArgumentList "/c", "`"$bat`"" -PassThru
   Place $proc ($area.X + $i * $w) $area.Y $w $topH $p.title
   $i++
