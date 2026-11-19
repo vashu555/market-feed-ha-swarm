@@ -1,8 +1,22 @@
 #!/bin/bash
 # Read-only live view of the market Swarm, as seen from THIS machine.
-# open-views.ps1 copies it to /var/tmp on each machine and runs:  watch -n 1 -t bash /var/tmp/mkt-view.sh
+#   bash mkt-view.sh        -> print one snapshot
+#   bash mkt-view.sh loop   -> redraw every second (open-views.ps1 runs this on each machine)
 # Every command has a time limit, so one stuck call can never freeze the window.
-# Ctrl+C in the window restarts the view instead of closing it (see open-views.ps1).
+if [ "$1" = loop ]; then
+  # Not `watch`: watch redraws only the parts it thinks changed, and the Windows console leaves old text behind
+  # (doubled lines, "hourslthy)"). Here each frame is built first, then the WHOLE screen is wiped and reprinted,
+  # trimmed to the window so nothing wraps or scrolls.
+  trap : INT                              # Ctrl+C interrupts the current frame only; the loop carries on = a refresh
+  printf '\033[?25l'                      # hide the cursor
+  while :; do
+    frame=$(bash "$0" 2>&1)
+    rows=$(tput lines 2>/dev/null || echo 40); cols=$(tput cols 2>/dev/null || echo 100)
+    printf '\033[H\033[2J\033[3J'         # cursor home, clear screen, clear scrollback
+    printf '%s\n' "$frame" | cut -c1-"$cols" | head -n $((rows - 1))
+    sleep 1
+  done
+fi
 t() { timeout 3 "$@" 2>/dev/null; }
 REGION=$(t docker node inspect self --format '{{index .Spec.Labels "region"}}')
 case $REGION in

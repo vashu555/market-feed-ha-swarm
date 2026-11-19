@@ -15,8 +15,8 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'ssh.exe' -and $_.Com
 
 # Each view reconnects by itself: keep-alives notice a dead link within ~15 s, then the .cmd loop retries every 3 s.
 $opts = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ConnectTimeout=10"
-# Ctrl+C stops watch, but the remote loop ignores Ctrl+C itself and starts watch again at once: Ctrl+C = refresh.
-$view = "sudo bash -c 'trap : INT; while :; do watch -n 1 -t bash /var/tmp/mkt-view.sh; clear; done'"   # (reused name: the local file was already copied above)
+# The view redraws the whole screen every second; Ctrl+C only interrupts one frame (= refresh), it never exits.
+$view = "sudo bash /var/tmp/mkt-view.sh loop"   # (reused name: the local file was already copied above)
 $panes = @(
   @{ name = "1-mumbai";    title = $titles[0]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.MUMBAI_KEY)`" $($cfg.MUMBAI_HOST) `"$view`"" },
   @{ name = "2-hyderabad"; title = $titles[1]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.HYDERABAD_KEY)`" $($cfg.HYDERABAD_HOST) `"$view`"" },
