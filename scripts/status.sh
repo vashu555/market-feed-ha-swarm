@@ -9,7 +9,7 @@ SSH=${SSH_BIN:-ssh}
 mumbai()    { "$SSH" -o ConnectTimeout=10 -i "$MUMBAI_KEY" "$MUMBAI_HOST" "$@"; }
 hyderabad() { "$SSH" -o ConnectTimeout=10 -i "$HYDERABAD_KEY" "$HYDERABAD_HOST" "$@"; }
 
-echo "== Swarm managers (expect 3 Ready; 1 Leader; the PC is Drain)"
+echo "== Swarm managers (expect 3 Ready; 1 Leader; micro-lb-2 is Drain)"
 mumbai "sudo docker node ls --format '{{.Hostname}}  {{.Status}}  {{.Availability}}  {{.ManagerStatus}}'"
 
 echo; echo "== Services (expect api 4/4, generator 1/1, haproxy 2/2, redis 1/1)"

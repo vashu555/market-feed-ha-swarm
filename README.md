@@ -1,4 +1,4 @@
-# HA Market Feed on Docker Swarm (Oracle Cloud Mumbai + Hyderabad + a PC)
+# HA Market Feed on Docker Swarm (Oracle Cloud: Mumbai + Hyderabad + a micro VM)
 
 > **SIMULATED DATA ONLY. NOT an NSE feed and NOT investment advice.** All prices are made up.
 
@@ -26,13 +26,14 @@ To build the cluster from nothing, see [SETUP.md](SETUP.md).
 |---|---|---|---|
 | **Mumbai** VM (`instance-20260319-0225`, label `region=mumbai`) | Manager (normally **Leader**) | HAProxy, api-1, api-2 (+ generator today) | 100.93.145.73 |
 | **Hyderabad** VM (`oci-hyderabad`, label `region=hyderabad`) | Manager | HAProxy, api-3, api-4 (+ Redis today) | 100.93.253.177 |
-| **PC** (WSL Ubuntu) | Manager, **drained** | Nothing: it only votes | 100.93.137.149 |
+| **Micro VM** (`micro-lb-2`, Oracle Linux 9, x86_64, 1 GB, label `role=voter`) | Manager, **drained** | Nothing: it only votes | 100.93.99.47 |
 
 NetBird `100.x` addresses are private to the VPN and unreachable from the internet. Public IPs and SSH keys are deliberately not in this repo.
 
 - Both VMs: Oracle Cloud, Ubuntu 24.04, ARM64, 4 CPU / 23 GB. Both also run other, unrelated production services.
 - **NetBird** (a WireGuard VPN) links the three machines privately. All Swarm traffic travels over it, never over the open internet.
-- **Why three managers:** Swarm only acts when a **majority** (2 of 3) agree. The PC is the tie-breaker, so if one VM dies the other VM plus the PC can still make decisions. Keep the PC (and WSL) running.
+- **Why three managers:** Swarm only acts when a **majority** (2 of 3) agree. The micro VM is the always-on tie-breaker, so if one VM dies the other VM plus the micro VM can still make decisions. (Until 2026-11-19 a home PC did this job; it was replaced because a PC that sleeps forces re-elections when it wakes. See docs/TESTS-AND-INCIDENTS.md.)
+- **Same-region caveat:** the micro VM is in Mumbai (a different fault domain from the Mumbai VM). A Mumbai **region** outage would take 2 of 3 voters, leaving Hyderabad unable to repair anything, although its running containers keep serving.
 - Where Redis and the generator run is Swarm's choice and can change. Run `scripts/status.sh` to see the current placement.
 
 ```
@@ -47,7 +48,7 @@ NetBird `100.x` addresses are private to the VPN and unreachable from the intern
                                        ▲
                                    generator                                  replicas: 1, 4 ticks/s
    ════════════ overlay networks (10.200.x.x) over NetBird (100.93.x.x) ════════════
-   PC/WSL: 3rd manager, votes only
+   micro VM (Mumbai): 3rd manager, votes only
 ```
 
 ## Folder layout
@@ -80,14 +81,14 @@ The real IPs are in `scripts/.env`. Only TCP 18080 is open to the internet. 1840
 
 ## Day-to-day
 
-Run these from Git Bash on Windows, or from WSL:
+Run these from Git Bash on Windows, WSL, Linux or macOS:
 
 ```bash
 bash scripts/status.sh            # nodes, services, placement, public checks, image fingerprints
 bash scripts/release.sh 1.1       # ship a code change as version 1.1
 ```
 
-On any manager (either VM, or the PC):
+On any manager (either VM, or the micro VM):
 
 ```bash
 sudo docker node ls                                          # 3 managers
@@ -97,7 +98,7 @@ sudo docker service logs -f market_api                       # logs from all 4 A
 sudo docker service scale market_api=4                       # change the number of APIs (max 2 per VM)
 ```
 
-`docker ps` on the PC shows nothing, because the PC runs no containers. Use the `service` and `stack` commands instead.
+`docker ps` on the micro VM shows nothing, because it runs no containers. Use the `service` and `stack` commands instead.
 
 ## Rules that matter
 
@@ -106,7 +107,7 @@ sudo docker service scale market_api=4                       # change the number
 3. **The stack name must be `market`.** HAProxy looks up `tasks.market_api`.
 4. **HAProxy config is a Swarm "config", and configs can't be changed in place.** If you edit `haproxy-swarm.cfg`, also bump `name: market_haproxy_v1` → `v2` in `stack.yaml`, then deploy.
 5. **Mumbai is the main production server.** Its website owns ports 80/443. Don't restart Docker there casually: n8n, OpenSearch and others restart with it. Never power it off without stopping the crawler first.
-6. **Keep the PC on.** With one VM down and the PC off, nothing gets repaired. When the PC wakes after being offline, it can force a short re-election (see docs/TESTS-AND-INCIDENTS.md).
+6. **The micro VM is tiny (1 GB, 1/8 CPU).** Never run `dnf` on it (it froze the VM once), and keep it drained so Swarm never places containers there.
 7. **NetBird must be up before Docker starts.** A systemd drop-in on each VM ensures it (see SETUP.md). NetBird also adds the firewall rule that allows traffic on `wt0` each time it starts.
 
 ## What happens when something fails
@@ -117,8 +118,8 @@ sudo docker service scale market_api=4                       # change the number
 | Generator stops | No prices for ~3 s, then prices restart from their starting values | Starts a new generator (usually on the VM with fewer Swarm containers) | **Tested 2026-11-18** (`docker stop` takes 10 s because the generator ignores SIGTERM) |
 | Redis stops | No prices for 5–9 s | Restarts it, possibly on the other VM; the name `redis` keeps the same address | **Tested** (Mumbai → Hyderabad) |
 | A whole VM dies | That VM's address stops answering; the other address keeps working with 2 APIs | Moves Redis/generator if they were there; the dead VM's 2 APIs wait as Pending | **Simulated** by draining Hyderabad |
-| PC wakes after being offline | Nothing | Possible 15 s leader re-election; Mumbai won again | **Seen** 2026-11-19 |
-| A VM dies **and** the PC is off | As above, but nothing is repaired | No majority, so no decisions | Expected |
+| A voter wakes after being offline | Nothing | Possible 15 s leader re-election | **Seen** 2026-11-19 with the old PC voter |
+| Two of the three managers are down | Running containers keep serving, but nothing is repaired | No majority, so no decisions | Expected |
 | NetBird link between the VMs breaks | Prices freeze for everyone (the generator and Redis are on different VMs) | Nothing it can fix | Expected; see "Next steps" |
 
 ## Next steps (not done yet)
@@ -127,6 +128,6 @@ sudo docker service scale market_api=4                       # change the number
 - **HAProxy:** `option redispatch` + `retries`, so a request that hits a dead API is retried on another one; prefer the APIs on the HAProxy's own VM.
 - **Generator:** exit cleanly on SIGTERM, and continue from the last prices after a restart.
 - **One public HTTPS address** via Cloudflare Tunnel (needs a domain on Cloudflare), so users don't have to switch addresses by hand.
-- **Replace the PC with a small always-on VM** as the third voter (or at least a Windows scheduled task to keep WSL running).
-- **An image registry** instead of copying images through the PC.
+- **Third voter outside Mumbai** (another region or provider), so one region outage can't take 2 of 3 votes.
+- **An image registry** instead of copying images through the release machine.
 - **Clean up:** Hyderabad still has the old, separately built images on disk (unused).

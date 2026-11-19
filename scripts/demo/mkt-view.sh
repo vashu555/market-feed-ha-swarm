@@ -5,7 +5,7 @@ REGION=$(docker node inspect self --format '{{index .Spec.Labels "region"}}' 2>/
 case $REGION in
   mumbai)    ROLE="MUMBAI VM";;
   hyderabad) ROLE="HYDERABAD VM";;
-  *)         ROLE="MY PC / WSL (drained: votes only)";;
+  *)         ROLE="MICRO VM (drained: votes only)";;
 esac
 H=$(hostname)
 short() { sed -E 's/(market_[a-z]+\.[0-9a-z]{1,6})[0-9a-z]*(\.[0-9a-z]+)?/\1/g'; }

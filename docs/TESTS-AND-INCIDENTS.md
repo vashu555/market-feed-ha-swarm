@@ -36,3 +36,18 @@ Everything here happened on the live cluster. Times are IST unless marked UTC.
 - Before blaming Swarm, check who ran what: `journalctl _COMM=sudo`.
 - `pull access denied for market-api` in the logs is harmless: Swarm tries Docker Hub, fails, and uses the local image.
 - A part-time voter (a PC that sleeps) can disrupt the leader when it returns. Docker's Raft has no protection against a returning node's higher term. Fix: an always-on third voter, with Docker starting only after NetBird.
+
+## Change: home PC replaced by an always-on micro VM (2026-11-19)
+
+**Why:** a PC that sleeps is a poor voter (see the incident above).
+
+**What was done**
+
+1. **Freed memory on `micro-lb-2`** (Oracle Always Free `E2.1.Micro`, 1 GB, Oracle Linux 9). Linux could only see 498 MB, because the kernel reserved **448 MB for kdump** crash dumps. Removing the `crashkernel` boot argument (plus a reboot) brought it to 945 MB. Unused services were disabled: an old test web page on port 80, the PCP performance recorder, and rpcbind.
+2. **First install attempt froze the VM.** `dnf install` loaded Oracle Linux's package metadata, used all memory, and the VM stopped answering SSH. It needed a reboot from the Oracle console.
+3. **Second attempt without `dnf`** ([scripts/voter-setup.sh](../scripts/voter-setup.sh)): Docker's static binaries and NetBird's single binary. `dnf-makecache.timer` is disabled so it can't happen again. The firewall trusts `wt0`. Docker waits until a VM's port 2377 actually answers through NetBird, not just until `wt0` exists.
+4. **Swap with a majority throughout:** joined the micro VM as a drained manager (4 managers), demoted the PC, the PC ran `docker swarm leave`, then `docker node rm`. Back to 3 managers.
+
+**Result:** Mumbai Leader; Hyderabad and micro-lb-2 Reachable. All services at full count; both public addresses healthy. The micro VM runs 0 containers and uses about 210 MB (dockerd 105, NetBird 69, containerd 38), with ~300 MB free.
+
+**Trade-off:** the micro VM is in the Mumbai region (fault domain 2; the Mumbai VM is in fault domain 1). That protects against a single host failing, but not against a whole region failing.

@@ -1,6 +1,6 @@
 # Live demo: watch Swarm repair things
 
-Opens four windows on a Windows PC: a live view of each machine (Mumbai VM, Hyderabad VM, the PC's WSL), plus a control panel that breaks things on purpose.
+Opens four windows on a Windows PC: a live view of each machine (Mumbai VM, Hyderabad VM, the micro VM), plus a control panel that breaks things on purpose.
 
 ```powershell
 # 64-bit Windows PowerShell, from the repo root (needs scripts/.env filled in)
@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File scripts\demo\open-views.ps1
 | `control-panel.ps1` | Menu: stop api-3/api-1, the generator, Redis or Hyderabad's HAProxy; rolling restart; drain or reactivate Hyderabad. Touches only the market lab. |
 | `common.ps1` | Reads `scripts/.env` and defines the SSH helpers. |
 
-Optional `scripts/.env` keys: `MUMBAI_NODE`, `HYDERABAD_NODE` (Swarm hostnames) and `WSL_DISTRO` (default `Ubuntu`).
+Needs `MICRO_KEY`/`MICRO_HOST` in `scripts/.env`. Optional keys: `MUMBAI_NODE`, `HYDERABAD_NODE`, `MICRO_NODE` (Swarm hostnames).
 
 Tips:
 

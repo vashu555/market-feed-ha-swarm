@@ -19,7 +19,7 @@ Short answers to the questions that come up when explaining this setup.
 | **Service / task** | A service is "4 APIs"; each copy is a task (`market_api.3`). `docker stack ps market` shows which task is on which node. |
 | **Stack** | All services from one `stack.yaml`, deployed under one name (`market`). That's where `market_` in every name comes from. |
 | **Manager vs worker** | Two separate jobs. A manager votes and stores the cluster's records (the brain). A worker runs containers (the hands). A machine can do either or both. |
-| **Drain** | Switches off the worker job only. The PC is a drained manager: it votes but runs nothing. |
+| **Drain** | Switches off the worker job only. The micro VM is a drained manager: it votes but runs nothing. A drained manager can still become Leader. |
 | **Leader** | The one manager that makes decisions right now, chosen by election (Raft). Only one at a time. |
 | **Majority (quorum)** | Managers act only when more than half agree. 3 managers survive 1 failure; 2 managers survive none; 5 survive 2. |
 | **replicas vs global** | `replicas: 4` = exactly 4 copies, anywhere allowed. `mode: global` = exactly one per node (HAProxy). |
@@ -31,7 +31,7 @@ Short answers to the questions that come up when explaining this setup.
 | Term | Meaning here |
 |---|---|
 | **NetBird** | WireGuard VPN with a control plane. Each machine gets a private `100.x` address. Peers connect directly (P2P), punching through NAT such as a home router, and fall back to a relay. It only *connects* the machines; the traffic itself flows directly between them. |
-| **Why not just public IPs?** | Swarm's ports (2377, 7946, 4789) would be exposed to the internet, unencrypted (the overlay data is plain VXLAN), and the home PC has no reachable public IP. |
+| **Why not just public IPs?** | Swarm's ports (2377, 7946, 4789) would be exposed to the internet, unencrypted (the overlay data is plain VXLAN), and machines behind NAT (like a home PC) have no reachable public IP. |
 | **Overlay network** | Swarm's own private network on top of NetBird (`10.200.x.x`). Containers on different VMs talk as if on one LAN. MTU 1230 = NetBird's 1280 − 50 bytes of VXLAN. |
 | **Service VIP** | `redis` resolves to a fixed virtual IP (10.200.1.9) wherever Redis runs. Swarm forwards it to the real container. That's why Redis can move VMs and the APIs keep the same address. |
 | **`tasks.<service>`** | Resolves to the real container IPs. HAProxy uses `tasks.market_api` to see all 4 APIs individually. |

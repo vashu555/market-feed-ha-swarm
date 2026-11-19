@@ -2,7 +2,7 @@
 
 These are the steps used on 2026-11-18. Day-to-day use is in [README.md](README.md).
 
-Machines: **Mumbai** VM and **Hyderabad** VM (Oracle Cloud, Ubuntu 24.04, ARM64), and a **PC** running WSL Ubuntu.
+Machines: **Mumbai** VM and **Hyderabad** VM (Oracle Cloud, Ubuntu 24.04, ARM64), and a **micro VM** (Oracle Always Free `VM.Standard.E2.1.Micro`, Oracle Linux 9, x86_64) as the vote-only third manager.
 Swarm traffic runs only over NetBird's private `100.93.x.x` addresses.
 
 ## 1. Oracle Cloud firewall (security lists)
@@ -13,7 +13,7 @@ Don't open 2377, 7946, 4789 (Swarm) or 18404 (HAProxy stats): those travel over 
 ## 2. Docker on every machine
 
 - **VMs:** install Docker Engine, for example with `curl -fsSL https://get.docker.com | sudo sh`.
-- **PC:** native Docker Engine inside WSL Ubuntu (not Docker Desktop), so NetBird and Docker share one network.
+- **Micro VM:** use [scripts/voter-setup.sh](scripts/voter-setup.sh) instead. It installs Docker's static binaries and NetBird's single binary **without `dnf`**, which runs out of memory on a 1 GB VM. First free the 448 MB that Oracle Linux reserves for kdump (`sudo grubby --update-kernel=ALL --remove-args=crashkernel`, then reboot), disable `dnf-makecache.timer`, and turn off unused services.
 
 ## 3. NetBird on every machine
 
@@ -67,7 +67,7 @@ sudo docker swarm join-token manager       # prints the join command; keep the t
 
 ## 7. Join the other two as managers
 
-On Hyderabad (use the PC's own NetBird IP when joining from the PC):
+On Hyderabad (use each machine's own NetBird IP):
 
 ```bash
 sudo docker swarm join --token <MANAGER-TOKEN> \
@@ -75,16 +75,26 @@ sudo docker swarm join --token <MANAGER-TOKEN> \
   100.93.145.73:2377
 ```
 
+Join the micro VM the same way, but drained:
+
+```bash
+sudo docker swarm join --token <MANAGER-TOKEN> --availability drain \
+  --advertise-addr 100.93.99.47 --listen-addr 100.93.99.47:2377 \
+  100.93.145.73:2377
+```
+
+**Replacing a manager** (done 2026-11-19, PC → micro VM): join the new one first (4 managers for a moment), then `docker node demote <old>`, run `docker swarm leave` on the old machine, and `docker node rm <old>`. Never drop below a majority while you do it.
+
 ## 8. Labels and drain (on any manager)
 
 ```bash
 sudo docker node update --label-add region=mumbai    instance-20260319-0225
 sudo docker node update --label-add region=hyderabad oci-hyderabad
-sudo docker node update --availability drain <pc-hostname>  # the PC votes but runs no containers
+sudo docker node update --label-add role=voter micro-lb-2       # joined with --availability drain: votes, runs nothing
 sudo docker node ls                                      # expect 3 managers, 1 Leader
 ```
 
-## 9. First deploy (from the PC)
+## 9. First deploy (from your laptop: it only needs SSH to the VMs)
 
 ```bash
 cp scripts/env.example scripts/.env     # fill in SSH keys and IPs
