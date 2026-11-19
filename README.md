@@ -96,6 +96,10 @@ On both VMs the same files live in `~/market-ha/` (api, generator, swarm).
 
 The real IPs are in `scripts/.env`. Only TCP 18080 is open to the internet. 18404 and the Swarm ports stay closed.
 
+## Live demo (one click)
+
+Double-click **`start-demo.cmd`** (or run it from any terminal). It opens a live view of each machine (Mumbai, Hyderabad, micro VM) side by side, plus a control panel to break things and watch Swarm repair them. Running it again replaces the old windows. Details: [scripts/demo/](scripts/demo/).
+
 ## Day-to-day
 
 Run these from Git Bash on Windows, WSL, Linux or macOS:

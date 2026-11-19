@@ -2,6 +2,10 @@
 
 Opens four windows on a Windows PC: a live view of each machine (Mumbai VM, Hyderabad VM, the micro VM), plus a control panel that breaks things on purpose.
 
+**One click:** double-click `start-demo.cmd` in the repo root. It finds 64-bit PowerShell itself and checks that `scripts/.env` exists.
+
+Or by hand:
+
 ```powershell
 # 64-bit Windows PowerShell, from the repo root (needs scripts/.env filled in)
 powershell -ExecutionPolicy Bypass -File scripts\demo\open-views.ps1
