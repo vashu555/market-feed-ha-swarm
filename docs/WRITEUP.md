@@ -5,7 +5,7 @@ A simulated live-price dashboard runs on Docker Swarm across two Oracle Cloud VM
 ## At a glance
 
 ```
-   Users ──► http://<Mumbai IP>:18080          http://<Hyderabad IP>:18080 ◄── Users
+   Users ──► http://155.248.248.83:18080      http://129.225.106.211:18080 ◄── Users
                     │                                     │
              HAProxy (Mumbai)                     HAProxy (Hyderabad)
                     │  ╲_________________________________╱ │
@@ -23,11 +23,13 @@ Each HAProxy also sends users to the other VM's APIs, and Swarm may move Redis o
 
 ## The machines
 
-| Machine | Swarm role | Runs |
-|---|---|---|
-| Mumbai VM (`instance-20260319-0225`) | Manager, active (normally the Leader) | 1 HAProxy, 2 APIs, plus whatever Swarm places there |
-| `oci-hyderabad` | Manager, active | 1 HAProxy, 2 APIs, plus whatever Swarm places there |
-| `micro-lb-2` (Oracle Always Free micro, 1 GB) | Manager, **drained** | Nothing: it is the tie-breaking vote |
+| Machine | Public IP | NetBird IP | Swarm role | Runs |
+|---|---|---|---|---|
+| Mumbai VM (`instance-20260319-0225`) | 155.248.248.83 | 100.93.145.73 | Manager, active (normally the Leader) | 1 HAProxy, 2 APIs, plus whatever Swarm places there |
+| `oci-hyderabad` | 129.225.106.211 | 100.93.253.177 | Manager, active | 1 HAProxy, 2 APIs, plus whatever Swarm places there |
+| `micro-lb-2` (Oracle Always Free micro, 1 GB) | 130.210.102.140 | 100.93.99.47 | Manager, **drained** | Nothing: it is the tie-breaking vote |
+
+Open the dashboard at **http://155.248.248.83:18080** or **http://129.225.106.211:18080**.
 
 Both VMs are Oracle Cloud ARM machines (4 CPU, 23 GB, Ubuntu 24.04). Only TCP 18080 is open to the internet; all Swarm traffic runs inside NetBird.
 

@@ -22,13 +22,30 @@ To build the cluster from nothing, see [SETUP.md](SETUP.md).
 
 ## The three machines
 
-| Machine | Swarm role | Runs | NetBird IP |
-|---|---|---|---|
-| **Mumbai** VM (`instance-20260319-0225`, label `region=mumbai`) | Manager (normally **Leader**) | HAProxy, api-1, api-2 (+ generator today) | 100.93.145.73 |
-| **Hyderabad** VM (`oci-hyderabad`, label `region=hyderabad`) | Manager | HAProxy, api-3, api-4 (+ Redis today) | 100.93.253.177 |
-| **Micro VM** (`micro-lb-2`, Oracle Linux 9, x86_64, 1 GB, label `role=voter`) | Manager, **drained** | Nothing: it only votes | 100.93.99.47 |
+| Machine | Swarm role | Runs | Public IP | NetBird IP | Oracle VCN IP |
+|---|---|---|---|---|---|
+| **Mumbai** VM (`instance-20260319-0225`, label `region=mumbai`) | Manager (normally **Leader**) | HAProxy, api-1, api-2 (+ generator today) | 155.248.248.83 | 100.93.145.73 | 10.0.0.182 |
+| **Hyderabad** VM (`oci-hyderabad`, label `region=hyderabad`) | Manager | HAProxy, api-3, api-4 (+ Redis today) | 129.225.106.211 | 100.93.253.177 | 10.0.0.31 |
+| **Micro VM** (`micro-lb-2`, Oracle Linux 9, x86_64, 1 GB, label `role=voter`) | Manager, **drained** | Nothing: it only votes | 130.210.102.140 | 100.93.99.47 | 10.0.0.217 |
 
-NetBird `100.x` addresses are private to the VPN and unreachable from the internet. Public IPs and SSH keys are deliberately not in this repo.
+## All addresses
+
+| Address | What it is | Reachable from |
+|---|---|---|
+| **http://155.248.248.83:18080** | Dashboard via Mumbai's HAProxy | Internet |
+| **http://129.225.106.211:18080** | Dashboard via Hyderabad's HAProxy | Internet |
+| 130.210.102.140 | Micro VM (SSH only; it serves nothing) | Internet, SSH key required |
+| `<VM>:18404` | HAProxy stats | Only on the VM itself (use an SSH tunnel) |
+| 100.93.145.73 / 100.93.253.177 / 100.93.99.47 | NetBird VPN addresses. Swarm runs only on these (ports 2377, 7946, 4789). | Only machines inside the NetBird group `ha-swarm` |
+| 10.0.0.182 / 10.0.0.31 / 10.0.0.217 | Oracle VCN private IPs. Mumbai and micro share one VCN; Hyderabad's is a separate network in another region. | Same VCN only |
+| 10.200.0.0/16 | Swarm's address pool (`--default-addr-pool`) | Inside containers only |
+| 10.200.0.0/24 | `ingress` overlay (unused: HAProxy publishes in host mode) | Inside Swarm |
+| 10.200.1.0/24 | `market_data_net` (internal): generator ↔ Redis ↔ APIs | Inside containers only |
+| 10.200.2.0/24 | `market_frontend_net`: HAProxy ↔ APIs | Inside containers only |
+| 10.200.1.9 | Service VIP of `redis`. It stays the same when Redis moves between VMs. | Inside containers only |
+| 10.200.1.16, 10.200.2.15 | Service VIPs of `market_api` (one per network) | Inside containers only |
+
+SSH users: `ubuntu` on both VMs, `opc` on the micro VM. Keys are not in this repo. Only TCP 18080 (and SSH) is open to the internet.
 
 - Both VMs: Oracle Cloud, Ubuntu 24.04, ARM64, 4 CPU / 23 GB. Both also run other, unrelated production services.
 - **NetBird** (a WireGuard VPN) links the three machines privately. All Swarm traffic travels over it, never over the open internet.
@@ -37,7 +54,7 @@ NetBird `100.x` addresses are private to the VPN and unreachable from the intern
 - Where Redis and the generator run is Swarm's choice and can change. Run `scripts/status.sh` to see the current placement.
 
 ```
-   Users ──► http://<Mumbai IP>:18080          http://<Hyderabad IP>:18080 ◄── Users
+   Users ──► http://155.248.248.83:18080      http://129.225.106.211:18080 ◄── Users
                     │                                     │
              HAProxy (Mumbai)                     HAProxy (Hyderabad)        mode: global, 1 per VM
                     │  ╲_________________________________╱ │
@@ -71,7 +88,7 @@ On both VMs the same files live in `~/market-ha/` (api, generator, swarm).
 
 | What | Where |
 |---|---|
-| Dashboard | `http://<Mumbai IP>:18080` or `http://<Hyderabad IP>:18080`; both serve the same page |
+| Dashboard | http://155.248.248.83:18080 (Mumbai) or http://129.225.106.211:18080 (Hyderabad); both serve the same page |
 | Which API answered | `/whoami`; refresh to see it rotate across api-1 to api-4 |
 | Is this VM's HAProxy usable | `/lb-health` returns `ok` (200) or `no-backends` (503) |
 | Which HAProxy answered | Response header `X-LB-Node` (browser F12 → Network), also shown on the dashboard |
