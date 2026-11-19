@@ -6,7 +6,7 @@ $titles = "MUMBAI VM", "HYDERABAD VM", "MICRO VM (votes only)", "CONTROL PANEL"
 
 # 1. Copy the view script to /var/tmp on all three machines (survives reboots; strip Windows line endings).
 foreach ($node in $cfg.MUMBAI_NODE, $cfg.HYDERABAD_NODE, $cfg.MICRO_NODE) {
-  Get-Content -Raw $view | & $ssh -o ConnectTimeout=10 -i $hosts[$node][0] $hosts[$node][1] "tr -d '\r' > /var/tmp/mkt-view.sh"
+  Get-Content -Raw $view | & $ssh -o ConnectTimeout=10 -i $hosts[$node][0] $hosts[$node][1] "sed '1s/^\xEF\xBB\xBF//' | tr -d '\r' > /var/tmp/mkt-view.sh"
 }
 # 2. Close any earlier copies. Windows first (their reconnect loops would otherwise restart the views), then leftover ssh views.
 Get-Process cmd, powershell -ErrorAction SilentlyContinue | Where-Object { $titles -contains $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -15,7 +15,8 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'ssh.exe' -and $_.Com
 
 # Each view reconnects by itself: keep-alives notice a dead link within ~15 s, then the .cmd loop retries every 3 s.
 $opts = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ConnectTimeout=10"
-$view = "sudo watch -n 1 -t bash /var/tmp/mkt-view.sh"   # (reused name: the local file was already copied above)
+# Ctrl+C stops watch, but the remote loop ignores Ctrl+C itself and starts watch again at once: Ctrl+C = refresh.
+$view = "sudo bash -c 'trap : INT; while :; do watch -n 1 -t bash /var/tmp/mkt-view.sh; clear; done'"   # (reused name: the local file was already copied above)
 $panes = @(
   @{ name = "1-mumbai";    title = $titles[0]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.MUMBAI_KEY)`" $($cfg.MUMBAI_HOST) `"$view`"" },
   @{ name = "2-hyderabad"; title = $titles[1]; cmd = "`"$ssh`" $opts -t -i `"$($cfg.HYDERABAD_KEY)`" $($cfg.HYDERABAD_HOST) `"$view`"" },

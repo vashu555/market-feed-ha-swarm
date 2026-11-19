@@ -2,6 +2,9 @@
 # 32-bit PowerShell can't see System32's ssh.exe (Windows redirects it); Sysnative is the way through.
 $sys = if (Test-Path "$env:SystemRoot\Sysnative") { "$env:SystemRoot\Sysnative" } else { "$env:SystemRoot\System32" }
 $ssh = "$sys\OpenSSH\ssh.exe"
+# Text piped to ssh.exe must be plain UTF-8: Windows PowerShell 5.1 otherwise prepends a byte-order mark,
+# which breaks the first line (#!/bin/bash) of scripts copied to the VMs.
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
 
 $envFile = Join-Path $PSScriptRoot "..\.env"
 if (-not (Test-Path $envFile)) { Write-Host "Missing scripts/.env - copy scripts/env.example and fill it in." -ForegroundColor Red; exit 1 }
