@@ -1,0 +1,11 @@
+# Real IPs and SSH key paths: never commit
+.env
+scripts/.env
+*.key
+*.pem
+id_*
+# Build/export leftovers
+*.tar
+*.tar.gz
+__pycache__/
+*.pyc

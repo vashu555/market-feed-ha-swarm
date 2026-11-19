@@ -1,0 +1,706 @@
+<title>Market HA Swarm</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: one reading column (~760px) with wide figures and tables breaking out to 1040px; sections follow the stack bottom-up. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface2: #eef1f6;
+  --fg: #17202c;
+  --muted: #5a6577;
+  --line: #d6dce6;
+  --accent: #3949c9;
+  --mum: #2160a8;
+  --hyd: #0b7a6a;
+  --ok: #1f7a43;
+  --warn: #a35f00;
+  --bad: #bf3029;
+  --ok-bg: #e3f3e9;
+  --warn-bg: #fbefdc;
+  --bad-bg: #fbe5e3;
+  --code-bg: #eef1f6;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b; --surface: #161d27; --surface2: #1c2531; --fg: #e5eaf1; --muted: #9ba7b8; --line: #2b3646;
+    --accent: #8e9bff; --mum: #6ea8f2; --hyd: #43c4ae; --ok: #55c483; --warn: #e5a443; --bad: #f06d64;
+    --ok-bg: #173324; --warn-bg: #3a2a12; --bad-bg: #3c1b19; --code-bg: #1b2330; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b; --surface: #161d27; --surface2: #1c2531; --fg: #e5eaf1; --muted: #9ba7b8; --line: #2b3646;
+  --accent: #8e9bff; --mum: #6ea8f2; --hyd: #43c4ae; --ok: #55c483; --warn: #e5a443; --bad: #f06d64;
+  --ok-bg: #173324; --warn-bg: #3a2a12; --bad-bg: #3c1b19; --code-bg: #1b2330; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 40px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.col { max-width: 760px; }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.2; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(32px, 5vw, 46px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 27px; font-weight: 600; margin-bottom: 14px; }
+h3 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+p { margin: 0 0 14px; }
+a { color: var(--accent); }
+code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; line-height: 1.55; margin: 0 0 14px; }
+.cm { color: var(--muted); }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.lede { font-size: 19px; color: var(--muted); max-width: 720px; margin-top: 14px; }
+section { padding-top: 56px; scroll-margin-top: 16px; }
+section > .eyebrow { color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chip { font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+nav.toc { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+nav.toc a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-color: var(--accent); }
+
+/* Machines */
+.machines { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.machine { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--c, var(--muted)); border-radius: 10px; padding: 18px; min-width: 0; }
+.machine.m { --c: var(--mum); } .machine.h { --c: var(--hyd); } .machine.p { --c: var(--accent); }
+.machine h3 { color: var(--c); }
+.machine .host { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); margin-bottom: 12px; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; }
+
+/* Figures */
+figure { margin: 0; }
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.fig svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--fg); }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; max-width: 760px; }
+svg text { font-family: var(--font-body); }
+.n { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
+.vm { fill: var(--surface2); stroke-width: 2; }
+.vm-m { stroke: var(--mum); } .vm-h { stroke: var(--hyd); }
+.vt { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.vt.m { fill: var(--mum); } .vt.h { fill: var(--hyd); }
+.vs { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+.t { font-size: 14px; font-weight: 600; fill: currentColor; }
+.ts { font-size: 11px; fill: var(--muted); }
+.lab { font-size: 11.5px; fill: var(--muted); }
+.a { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.dash { stroke-dasharray: 5 4; }
+.dot { stroke-dasharray: 2 4; }
+.band { fill: var(--accent); fill-opacity: 0.08; stroke: var(--accent); stroke-opacity: 0.35; stroke-dasharray: 4 4; }
+.bandt { font-family: var(--font-mono); font-size: 11px; fill: var(--accent); letter-spacing: 0.06em; }
+.note { font-size: 12.5px; font-weight: 600; }
+.note.ok { fill: var(--ok); } .note.bad { fill: var(--bad); } .note.warn { fill: var(--warn); }
+[data-part] { transition: opacity .25s; }
+[data-part].down { opacity: 0.18; }
+[data-part="band"].down rect { fill: var(--bad); fill-opacity: 0.12; stroke: var(--bad); }
+@media (prefers-reduced-motion: reduce) { [data-part] { transition: none; } }
+
+/* Scenario explorer */
+.scen-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 14px; }
+.scen-buttons button { font: 500 13.5px var(--font-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+.scen-buttons button:hover { border-color: var(--accent); }
+.scen-buttons button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.outcome { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.outcome > div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.outcome h3 { font-size: 15px; }
+.outcome p { font-size: 14.5px; margin: 0; }
+.status-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+.status-row .k { font-size: 13px; color: var(--muted); }
+.tag { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-left: auto; }
+@media (max-width: 680px) { .outcome { grid-template-columns: 1fr; } .tag { margin-left: 0; } }
+
+/* Steps */
+ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+ol.steps li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+ol.steps li::before { content: counter(s); font-family: var(--font-display); font-weight: 600; font-size: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--line); display: grid; place-items: center; }
+ol.steps li > div { min-width: 0; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+
+/* Layers */
+.layers { display: grid; gap: 10px; }
+.layer { display: grid; grid-template-columns: 150px 1fr; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.layer .ln { font-family: var(--font-display); font-weight: 600; }
+.layer .ln small { display: block; font-family: var(--font-mono); font-weight: 400; font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; }
+.layer p { margin: 0; font-size: 15px; min-width: 0; }
+@media (max-width: 600px) { .layer { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Code blocks */
+.codepart { display: grid; grid-template-columns: 260px 1fr; gap: 20px; padding: 22px 0; border-top: 1px solid var(--line); }
+.codepart:first-of-type { border-top: 0; }
+.codepart .file { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.codepart > div { min-width: 0; }
+.codepart p, .codepart li { font-size: 15px; }
+.codepart ul { padding-left: 18px; margin: 0; }
+@media (max-width: 820px) { .codepart { grid-template-columns: 1fr; gap: 8px; } }
+
+/* Tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12.5px; color: var(--muted); font-weight: 600; background: var(--surface2); }
+tr:last-child td { border-bottom: 0; }
+td.nowrap { white-space: nowrap; }
+
+/* Decisions */
+.decisions { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.dec { display: grid; grid-template-columns: 280px 1fr; gap: 18px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.dec:first-child { border-top: 0; }
+.dec .what { font-weight: 600; }
+.dec .why { font-size: 15px; color: var(--fg); min-width: 0; }
+.dec .why span { color: var(--muted); }
+@media (max-width: 720px) { .dec { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Votes */
+.votes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.vote { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; text-align: center; }
+.vote .big { font-family: var(--font-display); font-size: 30px; font-weight: 700; }
+.vote .big.ok { color: var(--ok); } .vote .big.bad { color: var(--bad); }
+.vote p { font-size: 14px; margin: 4px 0 0; color: var(--muted); }
+@media (max-width: 560px) { .votes { grid-template-columns: 1fr; } }
+
+/* Glossary */
+.gloss { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 28px; }
+.gloss dl { margin: 0; }
+.gloss dt { font-weight: 600; margin-top: 14px; }
+.gloss dd { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.foot { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header class="col">
+    <div class="eyebrow">Infrastructure explainer · simulated market feed</div>
+    <h1>Market HA Swarm</h1>
+    <p class="lede">A live price dashboard that keeps working when parts of it break. It runs on two Oracle Cloud servers in different cities, managed as one Docker Swarm cluster, with a home PC acting as tie-breaker.</p>
+    <div class="chips">
+      <span class="chip ok">Live since 18 Nov 2026</span>
+      <span class="chip">3 machines · 2 regions</span>
+      <span class="chip">2 load balancers · 4 APIs</span>
+      <span class="chip warn">Prices are simulated, not NSE data</span>
+    </div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#idea">The idea</a><a href="#machines">Machines</a><a href="#picture">Big picture</a><a href="#layers">Four layers</a>
+      <a href="#flow">Request &amp; tick flow</a><a href="#votes">Voting</a><a href="#failures">What if it breaks</a><a href="#code">The code</a>
+      <a href="#decisions">Design decisions</a><a href="#configs">Three setups</a><a href="#next">Not done yet</a><a href="#glossary">Glossary</a><a href="#ops">Commands</a>
+    </nav>
+  </header>
+
+  <section id="idea" class="col">
+    <div class="eyebrow">The idea</div>
+    <h2>Two branches of the same shop</h2>
+    <p>Think of a shop with two branches, one in Mumbai and one in Hyderabad. Each branch has a front desk (the <strong>load balancer</strong>) and two counters (the <strong>APIs</strong>). A customer can walk into either branch, and the front desk sends them to whichever counter is free, even one in the other city.</p>
+    <p>Behind the counters is one notice board (<strong>Redis</strong>) where a clerk (the <strong>generator</strong>) pins a new price every quarter second. Every counter reads the board and calls the new price out to its customers.</p>
+    <p>A committee of three managers decides who works where: the two branches, plus a third member who works from home (your <strong>PC</strong>). If a branch burns down, the other two members vote and move the notice board and clerk to the surviving branch.</p>
+  </section>
+
+  <section id="machines">
+    <div class="eyebrow">Machines</div>
+    <h2>Three machines, three different jobs</h2>
+    <div class="machines">
+      <article class="machine m">
+        <h3>Mumbai VM</h3>
+        <div class="host">instance-20260319-0225 · NetBird 100.93.145.73</div>
+        <dl class="kv">
+          <dt>Cloud</dt><dd>Oracle Cloud, Mumbai region</dd>
+          <dt>Hardware</dt><dd>ARM64, 4 CPU, 23 GB RAM</dd>
+          <dt>Swarm role</dt><dd>Manager, current <strong>Leader</strong></dd>
+          <dt>Runs</dt><dd>HAProxy, api-1, api-2, Redis</dd>
+          <dt>Also hosts</dt><dd>The company website (nginx on 80/443) and other apps, left untouched</dd>
+        </dl>
+      </article>
+      <article class="machine h">
+        <h3>Hyderabad VM</h3>
+        <div class="host">oci-hyderabad · NetBird 100.93.253.177</div>
+        <dl class="kv">
+          <dt>Cloud</dt><dd>Oracle Cloud, Hyderabad region</dd>
+          <dt>Hardware</dt><dd>ARM64, 4 CPU, 23 GB RAM</dd>
+          <dt>Swarm role</dt><dd>Manager</dd>
+          <dt>Runs</dt><dd>HAProxy, api-3, api-4, generator</dd>
+          <dt>Also hosts</dt><dd>The voice service (Asterisk, Plivo), left untouched</dd>
+        </dl>
+      </article>
+      <article class="machine p">
+        <h3>Home PC (WSL)</h3>
+        <div class="host">home-pc · NetBird 100.93.137.149</div>
+        <dl class="kv">
+          <dt>Where</dt><dd>Windows PC, Ubuntu inside WSL</dd>
+          <dt>Hardware</dt><dd>x86-64</dd>
+          <dt>Swarm role</dt><dd>Manager, <strong>drained</strong></dd>
+          <dt>Runs</dt><dd>Nothing for this app</dd>
+          <dt>Job</dt><dd>Third vote, and a control panel for running Swarm commands</dd>
+        </dl>
+      </article>
+    </div>
+  </section>
+
+  <section id="picture">
+    <div class="eyebrow">Big picture</div>
+    <h2>Where every piece runs and what it talks to</h2>
+    <p class="col">Each VM serves users on its own public address. Behind that, all four APIs and the single Redis work as one pool across both cities, connected through an encrypted private network (NetBird). <a href="#failures">What if it breaks</a> reuses this picture to show what each failure takes out.</p>
+    <figure>
+      <div class="fig">
+        <svg id="arch" viewBox="0 0 960 570" role="img" aria-label="Users reach a HAProxy load balancer on either VM on port 18080. Each HAProxy sends requests to all four APIs, two per VM, across the NetBird tunnel. The generator on Hyderabad publishes ticks to Redis on Mumbai, and Redis delivers them to all four APIs. The home PC only exchanges Swarm votes with both VMs.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          </defs>
+
+          <g data-part="band">
+            <rect x="440" y="120" width="80" height="360" rx="6" class="band"/>
+            <text x="480" y="300" class="bandt" text-anchor="middle" transform="rotate(-90 480 300)">NETBIRD · ENCRYPTED</text>
+          </g>
+
+          <g data-part="users"><rect x="380" y="14" width="200" height="46" rx="8" class="n"/><text x="480" y="42" class="t" text-anchor="middle">Users' browsers</text></g>
+          <g data-part="in-m"><path d="M430 60 L250 177" class="a" marker-end="url(#ah)"/><text x="322" y="102" class="lab" text-anchor="end">public IP, port 18080</text></g>
+          <g data-part="in-h"><path d="M530 60 L710 177" class="a" marker-end="url(#ah)"/><text x="638" y="102" class="lab">public IP, port 18080</text></g>
+
+          <g data-part="vm-mum">
+            <rect x="30" y="120" width="400" height="360" rx="14" class="vm vm-m"/>
+            <text x="50" y="146" class="vt m">Mumbai VM</text>
+            <text x="50" y="164" class="vs">instance-20260319-0225 · Leader</text>
+          </g>
+          <g data-part="vm-hyd">
+            <rect x="530" y="120" width="400" height="360" rx="14" class="vm vm-h"/>
+            <text x="550" y="146" class="vt h">Hyderabad VM</text>
+            <text x="550" y="164" class="vs">oci-hyderabad · manager</text>
+          </g>
+
+          <g data-part="lb-m"><rect x="130" y="180" width="200" height="50" rx="8" class="n"/><text x="230" y="202" class="t" text-anchor="middle">HAProxy</text><text x="230" y="220" class="ts" text-anchor="middle">load balancer · mode global</text></g>
+          <g data-part="lb-h"><rect x="630" y="180" width="200" height="50" rx="8" class="n"/><text x="730" y="202" class="t" text-anchor="middle">HAProxy</text><text x="730" y="220" class="ts" text-anchor="middle">load balancer · mode global</text></g>
+
+          <g data-part="api1"><rect x="60" y="280" width="150" height="46" rx="8" class="n"/><text x="135" y="301" class="t" text-anchor="middle">api-1</text><text x="135" y="318" class="ts" text-anchor="middle">FastAPI · WebSocket</text></g>
+          <g data-part="api2"><rect x="250" y="280" width="150" height="46" rx="8" class="n"/><text x="325" y="301" class="t" text-anchor="middle">api-2</text><text x="325" y="318" class="ts" text-anchor="middle">FastAPI · WebSocket</text></g>
+          <g data-part="api3"><rect x="560" y="280" width="150" height="46" rx="8" class="n"/><text x="635" y="301" class="t" text-anchor="middle">api-3</text><text x="635" y="318" class="ts" text-anchor="middle">FastAPI · WebSocket</text></g>
+          <g data-part="api4"><rect x="750" y="280" width="150" height="46" rx="8" class="n"/><text x="825" y="301" class="t" text-anchor="middle">api-4</text><text x="825" y="318" class="ts" text-anchor="middle">FastAPI · WebSocket</text></g>
+
+          <g data-part="redis"><rect x="130" y="380" width="200" height="50" rx="8" class="n"/><text x="230" y="402" class="t" text-anchor="middle">Redis</text><text x="230" y="420" class="ts" text-anchor="middle">pub/sub hub · 1 copy</text></g>
+          <g data-part="gen"><rect x="630" y="380" width="200" height="50" rx="8" class="n"/><text x="730" y="402" class="t" text-anchor="middle">Generator</text><text x="730" y="420" class="ts" text-anchor="middle">fake prices · 1 copy</text></g>
+
+          <g data-part="m-local"><path d="M195 230 L150 278" class="a" marker-end="url(#ah)"/><path d="M265 230 L310 278" class="a" marker-end="url(#ah)"/><text x="230" y="262" class="lab" text-anchor="middle">round-robin</text></g>
+          <g data-part="h-local"><path d="M695 230 L650 278" class="a" marker-end="url(#ah)"/><path d="M765 230 L810 278" class="a" marker-end="url(#ah)"/><text x="730" y="262" class="lab" text-anchor="middle">round-robin</text></g>
+          <g data-part="m-remote"><path d="M330 198 C 430 198, 500 230, 558 286" class="a dash" marker-end="url(#ah)"/><text x="480" y="188" class="lab" text-anchor="middle">+ api-3, api-4</text></g>
+          <g data-part="h-remote"><path d="M630 212 C 540 222, 460 250, 402 290" class="a dash" marker-end="url(#ah)"/><text x="480" y="276" class="lab" text-anchor="middle">+ api-1, api-2</text></g>
+
+          <g data-part="r-local"><path d="M180 380 L150 328" class="a" marker-end="url(#ah)"/><path d="M280 380 L310 328" class="a" marker-end="url(#ah)"/><text x="230" y="362" class="lab" text-anchor="middle">ticks</text></g>
+          <g data-part="r-remote"><path d="M330 392 C 440 392, 520 360, 600 328" class="a dash" marker-end="url(#ah)"/><text x="480" y="352" class="lab" text-anchor="middle">ticks to api-3, 4</text></g>
+          <g data-part="g-redis"><path d="M630 416 L333 416" class="a" marker-end="url(#ah)"/><text x="480" y="440" class="lab" text-anchor="middle">1 tick / 0.25 s</text></g>
+
+          <text data-note="m" x="230" y="463" class="note" text-anchor="middle"></text>
+          <text data-note="h" x="730" y="463" class="note" text-anchor="middle"></text>
+
+          <g data-part="pc-links"><path d="M420 506 L300 482" class="a dot"/><path d="M540 506 L660 482" class="a dot"/><text x="340" y="508" class="lab" text-anchor="end">votes</text><text x="620" y="508" class="lab">votes</text></g>
+          <g data-part="pc"><rect x="380" y="506" width="200" height="50" rx="8" class="n"/><text x="480" y="528" class="t" text-anchor="middle">Home PC (WSL)</text><text x="480" y="546" class="ts" text-anchor="middle">Swarm vote only · drained</text></g>
+        </svg>
+      </div>
+      <figcaption>Solid arrows stay inside one VM; dashed arrows cross between cities through the NetBird tunnel; dotted lines carry only Swarm's voting messages. Both load balancers use all four APIs.</figcaption>
+    </figure>
+  </section>
+
+  <section id="layers" class="col">
+    <div class="eyebrow">Four layers</div>
+    <h2>Each layer depends on the one below</h2>
+    <div class="layers">
+      <div class="layer"><div class="ln">1 · Machines<small>Oracle Cloud + home</small></div><p>Two Ubuntu servers (ARM) in different Oracle regions, plus a home PC. Each VM has its own public IP. There is no shared local network between them.</p></div>
+      <div class="layer"><div class="ln">2 · Private network<small>NetBird / WireGuard</small></div><p>NetBird gives all three machines private <code>100.93.x.x</code> addresses that can reach each other over an encrypted tunnel, even across cities and home NAT. All cluster traffic goes over this, never the open internet.</p></div>
+      <div class="layer"><div class="ln">3 · Cluster control<small>Docker Swarm</small></div><p>The three machines form one Swarm with three managers. The managers agree by majority vote on what runs where, and restart or move containers when something dies.</p></div>
+      <div class="layer"><div class="ln">4 · The app<small>containers</small></div><p>Seven containers: 2 HAProxy, 4 APIs, 1 Redis, 1 generator. They are connected by two virtual networks that span both VMs: <code>frontend_net</code> (load balancers ↔ APIs) and <code>data_net</code> (APIs ↔ Redis ↔ generator, no internet access).</p></div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="eyebrow">Request &amp; tick flow</div>
+    <h2>Following one visitor and one price</h2>
+    <div class="two">
+      <div>
+        <h3>A visitor opens the dashboard</h3>
+        <ol class="steps">
+          <li><div>The browser opens <code>http://&lt;Hyderabad public IP&gt;:18080/</code>.</div></li>
+          <li><div>Hyderabad's HAProxy picks the next API in rotation, which might be <code>api-1</code> on Mumbai. The request then crosses the NetBird tunnel.</div></li>
+          <li><div>The API returns the dashboard page (one HTML file with built-in JavaScript).</div></li>
+          <li><div>The page opens a <strong>WebSocket</strong> to <code>/ws/market</code>. HAProxy routes it the same way, and the connection stays open.</div></li>
+          <li><div>Every 2.5 s the page also calls <code>/whoami</code> to show which load balancer and API served it.</div></li>
+        </ol>
+      </div>
+      <div>
+        <h3>A price travels to the screen</h3>
+        <ol class="steps">
+          <li><div>The generator (Hyderabad) moves a price by a small random step and builds a JSON message with a sequence number.</div></li>
+          <li><div>It <strong>publishes</strong> the message to the Redis channel <code>market.ticks</code> on Mumbai.</div></li>
+          <li><div>Redis instantly forwards it to every <strong>subscriber</strong>: all four APIs.</div></li>
+          <li><div>Each API copies the tick into a small queue for each browser connected to it.</div></li>
+          <li><div>The tick goes down the WebSocket, and the page updates the table and chart. Redis keeps no history, so a tick missed during a reconnect is gone.</div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="votes" class="col">
+    <div class="eyebrow">Voting</div>
+    <h2>Why the home PC is part of the cluster</h2>
+    <p>Swarm only changes things (start, stop, move a container) when <strong>more than half of the managers agree</strong>. With three managers, that means any two.</p>
+    <div class="votes">
+      <div class="vote"><div class="big ok">3 of 3</div><p>All online. Swarm works.</p></div>
+      <div class="vote"><div class="big ok">2 of 3</div><p>One machine lost. Swarm still works and repairs things.</p></div>
+      <div class="vote"><div class="big bad">1 of 3</div><p>Swarm freezes. Running containers keep running, but nothing is moved.</p></div>
+    </div>
+    <p style="margin-top:16px">The rule exists to prevent <strong>split brain</strong>. If the link between Mumbai and Hyderabad broke, each VM would see the other as dead. Without a vote, both would start their own Redis and generator, and users would get two different sets of prices. With three voters, only the side that can still reach a second machine has a majority, and the lone side does nothing.</p>
+    <p>With only the two VMs, losing either one would leave the survivor with 1 of 2 votes, which is not a majority, so nothing could recover. The PC is the third vote that makes "any two" possible. It never runs the app itself: it is <strong>drained</strong>, so the containers always run on a VM. Any manager, the PC included, can be elected Leader and decide where things go.</p>
+  </section>
+
+  <section id="failures">
+    <div class="eyebrow">What if it breaks</div>
+    <h2>Click a failure to see what happens</h2>
+    <p class="col">Each button dims the broken parts of the diagram and describes the result. Only the normal state has been verified on the live cluster so far; the failure cases describe expected behaviour until the planned failover test is run.</p>
+    <div class="scen-buttons" role="group" aria-label="Failure scenarios">
+      <button type="button" id="sc-normal" data-sc="normal" aria-pressed="true">Everything normal</button>
+      <button type="button" id="sc-api" data-sc="api">One API crashes</button>
+      <button type="button" id="sc-redis" data-sc="redis">Redis crashes</button>
+      <button type="button" id="sc-mumon" data-sc="mumOn">Mumbai VM dies (PC on)</button>
+      <button type="button" id="sc-mumoff" data-sc="mumOff">Mumbai VM dies (PC off)</button>
+      <button type="button" id="sc-hydon" data-sc="hydOn">Hyderabad VM dies (PC on)</button>
+      <button type="button" id="sc-hydoff" data-sc="hydOff">Hyderabad VM dies (PC off)</button>
+      <button type="button" id="sc-link" data-sc="link">Link between VMs breaks</button>
+      <button type="button" id="sc-pc" data-sc="pc">Home PC switched off</button>
+    </div>
+    <div class="status-row" aria-live="polite">
+      <span class="k">Mumbai address</span><span class="chip" id="st-mu"></span>
+      <span class="k">Hyderabad address</span><span class="chip" id="st-hy"></span>
+      <span class="k">Live prices</span><span class="chip" id="st-ti"></span>
+      <span class="tag" id="st-tag"></span>
+    </div>
+    <div class="outcome">
+      <div><h3>What users see</h3><p id="out-users"></p></div>
+      <div><h3>What Swarm does</h3><p id="out-swarm"></p></div>
+    </div>
+    <div id="scen-fig" style="margin-top:14px"></div>
+  </section>
+
+  <section id="code">
+    <div class="eyebrow">The code</div>
+    <h2>How each piece is written</h2>
+    <p class="col">There are four small programs (generator, API, dashboard, load balancer config) and one file that tells Swarm how to run them all.</p>
+
+    <div class="codepart">
+      <div><h3>Generator</h3><div class="file">generator/main.py · Python</div><p>An endless loop that makes up prices. Each price takes a tiny random step (a "random walk"), so the chart looks like a real market. It never stores anything.</p></div>
+      <div><pre><code>prices[symbol] = max(1, prices[symbol] + rng.gauss(0, reference * 0.00008))
+tick = {"type": "tick", "simulated": True, "sequence": sequence,
+        "symbol": symbol, "price": price, "bid": ..., "ask": ...}
+await conn.publish(CHANNEL, json.dumps(tick))   <span class="cm"># to Redis channel market.ticks</span>
+await asyncio.sleep(INTERVAL)                   <span class="cm"># 0.25 s</span></code></pre>
+      <p>It cycles through NIFTY, BANKNIFTY and RELIANCE. If Redis is unreachable it waits one second and retries.</p></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>Redis</h3><div class="file">redis:7.4-alpine · no custom code</div><p>A message hub used in <strong>publish/subscribe</strong> mode: whatever the generator publishes, every subscribed API receives at once.</p></div>
+      <div><pre><code>redis-server --save "" --appendonly no   <span class="cm"># keep nothing on disk</span></code></pre>
+      <p>Persistence is switched off on purpose. Ticks are live-only, so Redis can be restarted on any VM without needing to copy data.</p></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>API (×4)</h3><div class="file">api/app.py · Python, FastAPI</div><p>The web server. Each copy is identical and has no state worth saving, which is why there can be four of them and any of them can answer.</p></div>
+      <div>
+<pre><code><span class="cm"># Background task: listen to Redis and copy every tick to each browser's queue</span>
+await pubsub.subscribe(CHANNEL)
+for queue in tuple(CLIENTS):            <span class="cm"># one queue per open WebSocket</span>
+    if queue.full(): queue.get_nowait()   <span class="cm"># slow browser? drop its oldest tick</span>
+    queue.put_nowait(payload)
+
+<span class="cm"># Health check used by HAProxy: healthy only if Redis answers within 1.5 s</span>
+@app.get("/health")
+async def health():
+    if await asyncio.wait_for(redis_client.ping(), timeout=1.5):
+        return {"ok": True, "instance": INSTANCE_NAME, "region": REGION}
+    return JSONResponse({"ok": False, ...}, status_code=503)
+
+<span class="cm"># The live feed</span>
+@app.websocket("/ws/market")
+async def market_websocket(websocket):
+    await websocket.accept()
+    await websocket.send_json({"type": "hello", "api": INSTANCE_NAME, "region": REGION})
+    while True:
+        await websocket.send_text(await queue.get())</code></pre>
+      <ul>
+        <li><code>/</code> serves the dashboard page.</li>
+        <li><code>/whoami</code> says which API and VM answered. It doesn't touch Redis, so it's also used as the "is the process alive" check.</li>
+        <li><code>/health</code> says "I can do real work". The 1.5 s limit makes it fail fast when Redis dies; without it, the check hung and failover took about 15 s instead of about 9–12 s.</li>
+        <li>Each browser's queue holds at most 100 ticks, so one slow viewer can't hold up the others.</li>
+      </ul></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>Dashboard</h3><div class="file">api/static/index.html · HTML + JavaScript</div><p>The page in the browser. It heals itself: if the connection drops, it reconnects to the same address, and the load balancer sends it to a healthy API.</p></div>
+      <div><pre><code>ws = new WebSocket('ws://' + location.host + '/ws/market');
+ws.onclose = () =&gt; setTimeout(connect, 2000);          <span class="cm">// reconnect after 2 s</span>
+setInterval(() =&gt; {                                      <span class="cm">// connection open but silent?</span>
+  if (Date.now() - lastTickAt &gt; 5000) ws.close();      <span class="cm">// force a reconnect after 5 s</span>
+}, 1000);</code></pre>
+      <p>It shows the load balancer from the <code>X-LB-Node</code> response header, and the API and VM from the WebSocket's first "hello" message.</p></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>Load balancer</h3><div class="file">swarm/haproxy-swarm.cfg · HAProxy 3.2</div><p>Receives every visitor and passes them to a healthy API. It finds the APIs by asking Docker's built-in DNS, so it notices automatically when Swarm moves one.</p></div>
+      <div><pre><code>resolvers docker
+    nameserver docker_dns 127.0.0.11:53          <span class="cm"># Docker's built-in DNS</span>
+
+backend api_pool
+    balance roundrobin                           <span class="cm"># take turns</span>
+    option httpchk
+    http-check send meth GET uri /health ...      <span class="cm"># ask each API "can you work?"</span>
+    default-server inter 2s fall 3 rise 2 check resolvers docker init-addr none
+    server-template api 6 tasks.market_api:8000  <span class="cm"># 6 slots filled from DNS</span>
+
+frontend market_front
+    bind :8080
+    http-request return status 200 ... if lb_health { nbsrv(api_pool) gt 0 }
+    http-response set-header X-LB-Node "${NODE_NAME}"
+
+defaults
+    timeout tunnel 1h                            <span class="cm"># keep WebSockets open</span></code></pre>
+      <ul>
+        <li><code>tasks.market_api</code> returns the address of every running API on either VM.</li>
+        <li><code>inter 2s fall 3 rise 2</code>: check every 2 s, mark an API dead after 3 failures (about 6 s), and alive again after 2 successes.</li>
+        <li><code>/lb-health</code> answers 200 only if at least one API is usable. A future health-checked DNS name or tunnel would use it.</li>
+      </ul></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>Swarm stack</h3><div class="file">swarm/stack.yaml · Docker Compose format</div><p>The instructions Swarm follows: which containers, how many, where they may run, which networks, and how to update them.</p></div>
+      <div><pre><code>api:
+  image: market-api:1.0
+  environment:
+    INSTANCE_NAME: "api-{{.Task.Slot}}"      <span class="cm"># api-1 … api-4</span>
+    REGION: "{{.Node.Hostname}}"             <span class="cm"># which VM it landed on</span>
+  deploy:
+    replicas: 4
+    placement: {max_replicas_per_node: 2}   <span class="cm"># exactly 2 per VM</span>
+    update_config: {parallelism: 1, delay: 5s, order: stop-first}
+
+haproxy:
+  deploy: {mode: global}                     <span class="cm"># one per active machine</span>
+  ports:
+    - {target: 8080, published: 18080, mode: host}
+
+redis:     {deploy: {replicas: 1}}           <span class="cm"># no placement rule: free to move</span>
+generator: {deploy: {replicas: 1}}
+
+networks:
+  frontend_net: {driver: overlay, driver_opts: {com.docker.network.driver.mtu: "1230"}}
+  data_net:     {driver: overlay, internal: true, ...}</code></pre>
+      <p>Deployed from any manager with <code>docker stack deploy -c stack.yaml --resolve-image never market</code>. The stack name must be <code>market</code>, because HAProxy looks up <code>tasks.market_api</code>.</p></div>
+    </div>
+
+    <div class="codepart">
+      <div><h3>Cluster setup</h3><div class="file">one-time commands</div><p>How the three machines were joined into one Swarm, using only their NetBird addresses.</p></div>
+      <div><pre><code><span class="cm"># Mumbai: create the cluster</span>
+docker swarm init --advertise-addr 100.93.145.73 --listen-addr 100.93.145.73:2377 \
+  --data-path-addr 100.93.145.73 --default-addr-pool 10.200.0.0/16
+
+<span class="cm"># Hyderabad and the PC: join as managers (each with its own NetBird IP)</span>
+docker swarm join --token &lt;manager token&gt; --advertise-addr &lt;own IP&gt; \
+  --listen-addr &lt;own IP&gt;:2377 --data-path-addr &lt;own IP&gt; 100.93.145.73:2377
+
+<span class="cm"># Keep the PC as a voter only, and label the VMs</span>
+docker node update --availability drain home-pc
+docker node update --label-add region=mumbai instance-20260319-0225
+docker node update --label-add region=hyderabad oci-hyderabad</code></pre></div>
+    </div>
+  </section>
+
+  <section id="decisions">
+    <div class="eyebrow">Design decisions</div>
+    <h2>Why it is built this way</h2>
+    <div class="decisions">
+      <div class="dec"><div class="what">No Keepalived floating IP</div><div class="why">A floating IP can only move between machines on the same local network. Mumbai and Hyderabad are different Oracle regions, and Oracle also ignores the network announcements Keepalived relies on. <span>Each VM keeps its own address instead; one shared address is planned through Cloudflare Tunnel.</span></div></div>
+      <div class="dec"><div class="what">Three managers, home PC as the third</div><div class="why">A Swarm with two managers cannot survive losing one, because 1 of 2 is not a majority. India has only these two Oracle regions, so the tie-breaker has to live somewhere else. <span>The PC is a free stand-in; a small always-on server elsewhere would be the permanent fix.</span></div></div>
+      <div class="dec"><div class="what">PC is drained</div><div class="why">Otherwise Swarm could place Redis or a load balancer on a home PC that sleeps, sits behind home internet, and is x86 while the app images are built for ARM.</div></div>
+      <div class="dec"><div class="what">NetBird private network</div><div class="why">Swarm needs the machines to reach each other on a fixed address. NetBird provides that over WireGuard encryption, so the Swarm ports never face the internet.</div></div>
+      <div class="dec"><div class="what">Swarm uses 10.200.0.0/16</div><div class="why">Swarm's default internal range starts at 10.0.0.0, the same range as the VMs' own Oracle network (10.0.0.x). The clash would have broken networking on the VMs, including the website.</div></div>
+      <div class="dec"><div class="what">Network MTU 1230</div><div class="why">NetBird packets carry 1280 bytes and Swarm's overlay adds 50 bytes of wrapping. Without the lower limit, small requests work but large WebSocket messages stall, which is very hard to diagnose.</div></div>
+      <div class="dec"><div class="what">Port 18080, host mode</div><div class="why">Ports 80 and 443 belong to the website's nginx on Mumbai. Host mode means each VM's own HAProxy answers on that VM, instead of Swarm forwarding traffic between machines.</div></div>
+      <div class="dec"><div class="what">Exactly 2 APIs per VM</div><div class="why">Swarm's "spread evenly" preference placed them 3 + 1 in practice. A hard limit of 2 per VM matches the plan of one load balancer plus two APIs per VM.</div></div>
+      <div class="dec"><div class="what">Updates replace one API at a time, stop-first</div><div class="why">With the 2-per-VM limit there is no room to start a new copy before stopping the old one; a start-first update hung forever. Three APIs keep serving while the fourth is replaced.</div></div>
+      <div class="dec"><div class="what">Two different health checks</div><div class="why">Swarm checks <code>/whoami</code> ("is the process alive"), and HAProxy checks <code>/health</code> ("can it reach Redis"). If Swarm used <code>/health</code>, it would kill all four APIs whenever Redis was being moved.</div></div>
+      <div class="dec"><div class="what">Redis and generator not pinned</div><div class="why">They have no placement rule, so Swarm can restart them on whichever VM survives. That is the main thing the third vote buys.</div></div>
+      <div class="dec"><div class="what">Images built on each VM, no registry</div><div class="why">Both VMs are ARM, so each builds <code>market-api:1.0</code> and <code>market-generator:1.0</code> locally, and the deploy uses <code>--resolve-image never</code>. That avoids publishing images anywhere.</div></div>
+      <div class="dec"><div class="what">Only port 18080 is public</div><div class="why">The Oracle firewall opens only the app port. HAProxy stats (18404) and the Swarm ports (2377, 7946, 4789) are closed to the internet; this was checked after opening the port.</div></div>
+      <div class="dec"><div class="what">Hyderabad hostname pinned</div><div class="why">Renaming an Oracle instance in the console doesn't rename the server, and cloud-init resets the hostname at every boot. A cloud-init setting now keeps <code>oci-hyderabad</code> after a reboot.</div></div>
+    </div>
+  </section>
+
+  <section id="configs">
+    <div class="eyebrow">Three setups</div>
+    <h2>The same app, configured three ways</h2>
+    <p class="col">The project folder holds three ways of running the same app. Only the Swarm one is live on the servers.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Setup</th><th>Files</th><th>Where</th><th>Failover method</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Local lab</strong><br>1 machine</td><td><code>compose.yaml</code>, <code>keepalived/</code>, <code>gateway/</code>, <code>haproxy/lb-a.cfg</code>, <code>lb-b.cfg</code></td><td>Home PC (WSL)</td><td>Keepalived moves a floating IP between two HAProxy containers on one Docker network</td><td class="nowrap"><span class="chip">Running locally</span></td></tr>
+          <tr><td><strong>Two-VM Compose</strong><br>2 independent stacks</td><td><code>compose.vm.yaml</code>, <code>haproxy/haproxy-vm.cfg</code>, <code>env/*.env.example</code>, <code>DEPLOY-OCI-2VM.md</code></td><td>Designed for both VMs</td><td>Each region is self-contained; HAProxy uses the other region's APIs as backup over port 8081</td><td class="nowrap"><span class="chip">Tested locally, not deployed</span></td></tr>
+          <tr><td><strong>Swarm</strong><br>1 cluster</td><td><code>swarm/stack.yaml</code>, <code>swarm/haproxy-swarm.cfg</code></td><td>Both VMs + PC as voter</td><td>Swarm restarts or moves containers by majority vote; HAProxy skips unhealthy APIs</td><td class="nowrap"><span class="chip ok">Live</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="ports">
+    <div class="eyebrow">Ports</div>
+    <h2>Who can reach what</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Port</th><th>Open to</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><td>18080</td><td>Internet</td><td>The app: dashboard, <code>/whoami</code>, <code>/ws/market</code>, <code>/lb-health</code></td></tr>
+          <tr><td>18404</td><td>Not public</td><td>HAProxy statistics page</td></tr>
+          <tr><td>2377 / 7946 / 4789</td><td>NetBird only</td><td>Swarm management, node discovery, overlay traffic between VMs</td></tr>
+          <tr><td>80 / 443 (Mumbai)</td><td>Internet</td><td>The company website's nginx, not part of this project</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="next" class="col">
+    <div class="eyebrow">Not done yet</div>
+    <h2>Known gaps and planned work</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Item</th><th>Why it matters</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Failover test</td><td>Drain Mumbai in Swarm and confirm Redis moves and Hyderabad keeps serving.</td><td class="nowrap"><span class="chip warn">Waiting for go-ahead</span></td></tr>
+          <tr><td>Keep WSL running</td><td>A Windows scheduled task, so the PC's vote doesn't disappear when WSL idles.</td><td class="nowrap"><span class="chip warn">Waiting for go-ahead</span></td></tr>
+          <tr><td>One public address</td><td>Cloudflare Tunnel with both VMs connected: one HTTPS name that survives either VM dying.</td><td class="nowrap"><span class="chip warn">Needs a domain</span></td></tr>
+          <tr><td>Generator next to Redis</td><td>Today they sit on different VMs, so a broken link between the VMs stops all prices.</td><td class="nowrap"><span class="chip">Planned</span></td></tr>
+          <tr><td>HTTPS</td><td>Port 18080 is plain HTTP. The Cloudflare Tunnel would add HTTPS.</td><td class="nowrap"><span class="chip">Planned</span></td></tr>
+          <tr><td>Always-on third voter</td><td>A small server outside both regions, replacing the PC as tie-breaker.</td><td class="nowrap"><span class="chip">Optional</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="glossary">
+    <div class="eyebrow">Glossary</div>
+    <h2>Words used on this page</h2>
+    <div class="gloss">
+      <dl>
+        <dt>Container</dt><dd>A packaged program with everything it needs, running isolated on a machine.</dd>
+        <dt>Image</dt><dd>The template a container starts from, like <code>market-api:1.0</code>.</dd>
+        <dt>Docker Compose</dt><dd>Runs several containers together on one machine from one file.</dd>
+        <dt>Docker Swarm</dt><dd>Runs containers across several machines as if they were one, and repairs them when something fails.</dd>
+        <dt>Node</dt><dd>One machine in the Swarm.</dd>
+        <dt>Manager / Leader</dt><dd>Managers hold the cluster's records and vote. The Leader is the manager currently making decisions.</dd>
+        <dt>Drain</dt><dd>A node setting meaning "run no containers here". The node still votes.</dd>
+        <dt>Service / replica / task</dt><dd>A service is "run 4 copies of the API". Each copy is a replica, and Swarm tracks each one as a task.</dd>
+      </dl>
+      <dl>
+        <dt>Overlay network</dt><dd>A virtual network that spans several machines, so containers on different VMs can talk as if side by side.</dd>
+        <dt>Load balancer (HAProxy)</dt><dd>Receives every visitor and passes them to one of several servers, skipping unhealthy ones.</dd>
+        <dt>Health check</dt><dd>A regular "are you OK?" request. Fail it a few times and you stop getting traffic.</dd>
+        <dt>WebSocket</dt><dd>A connection that stays open, so the server can push new prices without the browser asking each time.</dd>
+        <dt>Publish / subscribe</dt><dd>One sender posts a message to a channel, and every listener on that channel receives it.</dd>
+        <dt>VPN (NetBird)</dt><dd>An encrypted private network laid over the internet. NetBird is built on WireGuard.</dd>
+        <dt>Floating IP (Keepalived)</dt><dd>One address that jumps to a backup machine on the same local network when the main one fails.</dd>
+        <dt>Quorum / split brain</dt><dd>Quorum is the majority needed to decide. Split brain is two halves each acting as if they were in charge.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="ops" class="col">
+    <div class="eyebrow">Commands</div>
+    <h2>Everyday commands</h2>
+    <p>Run these on any manager: Mumbai, Hyderabad, or the PC's WSL. Add <code>sudo</code> on the VMs.</p>
+    <pre><code>docker node ls                       <span class="cm"># are all 3 machines healthy? who is Leader?</span>
+docker service ls                    <span class="cm"># how many copies of each service are running</span>
+docker service ps market_api         <span class="cm"># which VM each API is on</span>
+docker service logs -f market_api    <span class="cm"># live logs from all 4 APIs</span>
+
+<span class="cm"># Deploy a change (on a VM, from ~/market-ha/swarm)</span>
+docker stack deploy -c stack.yaml --resolve-image never market
+
+<span class="cm"># Rebalance APIs after a VM comes back</span>
+docker service update --force market_api
+
+<span class="cm"># Quick check from anywhere</span>
+curl http://&lt;VM public IP&gt;:18080/lb-health    <span class="cm"># "ok" = this load balancer has a working API</span>
+curl http://&lt;VM public IP&gt;:18080/whoami       <span class="cm"># which API and VM answered</span></code></pre>
+  </section>
+
+  <p class="foot col">State as of 18 November 2026. All prices on the dashboard are generated by the project's own simulator. They are not exchange data and not investment advice.</p>
+</div>
+
+<script>
+(function () {
+  var S = {
+    normal: { down: [], nm: "", nh: "",
+      st: [["ok","Works"],["ok","Works"],["ok","Flowing"]], tag: "Verified on the live cluster",
+      u: "Both addresses serve the dashboard. Each load balancer spreads requests over all four APIs, two in each city.",
+      s: "Nothing to fix. The managers exchange heartbeats every second and watch that all seven containers are running." },
+    api: { down: ["api2"], nm: "↻ Swarm restarts api-2", nmc: "ok", nh: "",
+      st: [["ok","Works"],["ok","Works"],["ok","Flowing"]], tag: "Expected · HAProxy part tested in the Compose lab",
+      u: "Requests sent to api-2 fail for up to about 6 s (3 missed health checks, 2 s apart), then both load balancers skip it. Dashboards connected to api-2 reconnect within 2–5 s.",
+      s: "Notices the container stopped and starts a new api-2 on the same VM. HAProxy adds it back after 2 passed health checks." },
+    redis: { down: ["redis","r-local","r-remote","g-redis"], nm: "↻ Swarm restarts Redis", nmc: "ok", nh: "",
+      st: [["warn","Brief errors possible"],["warn","Brief errors possible"],["warn","Paused"]], tag: "Expected · not yet tested on the Swarm",
+      u: "Prices pause. If Redis stays down for more than about 6 s, every API fails its /health check and both addresses return errors until Redis is back.",
+      s: "Starts a new Redis within seconds. The APIs reconnect by themselves (they retry every second) and prices resume." },
+    mumOn: { down: ["in-m","vm-mum","lb-m","api1","api2","redis","m-local","m-remote","h-remote","r-local","r-remote","g-redis"],
+      nm: "✕ VM offline", nmc: "bad", nh: "↻ Swarm restarts Redis here", nhc: "ok",
+      st: [["bad","Down"],["warn","Recovers"],["warn","Pause, then resume"]], tag: "Expected · not yet tested",
+      u: "The Mumbai address stops answering. On the Hyderabad address, prices pause and requests may fail for tens of seconds, then everything runs on api-3 and api-4.",
+      s: "Hyderabad + PC = 2 of 3 votes. Swarm declares Mumbai lost and restarts Redis on Hyderabad. api-1 and api-2 wait as 'pending' (max 2 per VM) until Mumbai returns." },
+    mumOff: { down: ["in-m","vm-mum","lb-m","api1","api2","redis","m-local","m-remote","h-remote","r-local","r-remote","g-redis","pc","pc-links"],
+      nm: "✕ VM offline", nmc: "bad", nh: "✕ Swarm frozen: 1 of 3 votes", nhc: "bad",
+      st: [["bad","Down"],["bad","Errors"],["bad","Stopped"]], tag: "Expected · not yet tested",
+      u: "Both addresses fail. Hyderabad's APIs need Redis, and Redis was on Mumbai.",
+      s: "Hyderabad alone has 1 of 3 votes, so Swarm freezes. Containers already running keep running, but nothing is moved, so Redis stays dead." },
+    hydOn: { down: ["in-h","vm-hyd","lb-h","api3","api4","gen","h-local","h-remote","m-remote","r-remote","g-redis"],
+      nm: "↻ Swarm restarts the generator here", nmc: "ok", nh: "✕ VM offline", nhc: "bad",
+      st: [["ok","Works"],["bad","Down"],["warn","Pause, then resume"]], tag: "Expected · not yet tested",
+      u: "The Hyderabad address stops answering. The Mumbai address keeps working on api-1 and api-2; prices pause until the generator is back.",
+      s: "Mumbai + PC = 2 of 3 votes. Swarm restarts the generator on Mumbai. api-3 and api-4 wait as 'pending' until Hyderabad returns." },
+    hydOff: { down: ["in-h","vm-hyd","lb-h","api3","api4","gen","h-local","h-remote","m-remote","r-remote","g-redis","pc","pc-links"],
+      nm: "✕ Swarm frozen: no generator", nmc: "bad", nh: "✕ VM offline", nhc: "bad",
+      st: [["ok","Works"],["bad","Down"],["bad","Frozen"]], tag: "Expected · not yet tested",
+      u: "The Mumbai address loads and its APIs are healthy, but the prices stop moving.",
+      s: "Mumbai alone has 1 of 3 votes, so Swarm freezes and the generator is not restarted." },
+    link: { down: ["band","m-remote","h-remote","r-remote","g-redis"],
+      nm: "↻ generator restarted here*", nmc: "warn", nh: "✕ cut off from Redis", nhc: "bad",
+      st: [["warn","Works, prices pause"],["bad","Errors"],["warn","Paused"]], tag: "Expected · the known weak spot",
+      u: "The generator (Hyderabad) can't reach Redis (Mumbai), so prices stop. Hyderabad's APIs lose Redis, and its load balancer can't reach Mumbai's APIs, so the Hyderabad address fails. The Mumbai address keeps serving.",
+      s: "*If the PC can still reach Mumbai, Mumbai + PC hold the majority, treat Hyderabad as lost and restart the generator on Mumbai, so Mumbai's prices resume. Planned fix: run the generator on the same VM as Redis." },
+    pc: { down: ["pc","pc-links"], nm: "", nh: "",
+      st: [["ok","Works"],["ok","Works"],["ok","Flowing"]], tag: "Expected",
+      u: "Nothing visible.",
+      s: "2 of 3 managers remain, so Swarm still works, but it can no longer survive losing a VM. Keeping WSL running (planned scheduled task) avoids this." }
+  };
+  // The failure section gets its own copy of the diagram, so the buttons and the picture sit together.
+  var original = document.querySelector("#picture .fig");
+  var copy = original.cloneNode(true);
+  copy.querySelector("svg").removeAttribute("id");
+  document.getElementById("scen-fig").appendChild(copy);
+  var scenSvg = copy.querySelector("svg");
+  var parts = scenSvg.querySelectorAll("[data-part]");
+  var buttons = document.querySelectorAll(".scen-buttons button");
+  function chip(id, pair) { var el = document.getElementById(id); el.className = "chip " + pair[0]; el.textContent = pair[1]; }
+  function note(which, text, cls) { var el = scenSvg.querySelector('[data-note="' + which + '"]'); el.textContent = text || ""; el.setAttribute("class", "note " + (cls || "")); }
+  function show(key) {
+    var sc = S[key] || S.normal;
+    parts.forEach(function (p) { p.classList.toggle("down", sc.down.indexOf(p.getAttribute("data-part")) !== -1); });
+    note("m", sc.nm, sc.nmc); note("h", sc.nh, sc.nhc);
+    chip("st-mu", sc.st[0]); chip("st-hy", sc.st[1]); chip("st-ti", sc.st[2]);
+    document.getElementById("st-tag").textContent = sc.tag;
+    document.getElementById("out-users").textContent = sc.u;
+    document.getElementById("out-swarm").textContent = sc.s;
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-sc") === key ? "true" : "false"); });
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () { show(b.getAttribute("data-sc")); });
+  });
+  show("normal");
+})();
+</script>

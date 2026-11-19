@@ -1,0 +1,95 @@
+# Building the cluster from zero
+
+These are the steps used on 2026-11-18. Day-to-day use is in [README.md](README.md).
+
+Machines: **Mumbai** VM and **Hyderabad** VM (Oracle Cloud, Ubuntu 24.04, ARM64), and a **PC** running WSL Ubuntu.
+Swarm traffic runs only over NetBird's private `100.93.x.x` addresses.
+
+## 1. Oracle Cloud firewall (security lists)
+
+Open **only TCP 18080 from 0.0.0.0/0** on both VMs' security lists. That's the dashboard.
+Don't open 2377, 7946, 4789 (Swarm) or 18404 (HAProxy stats): those travel over NetBird or an SSH tunnel.
+
+## 2. Docker on every machine
+
+- **VMs:** install Docker Engine, for example with `curl -fsSL https://get.docker.com | sudo sh`.
+- **PC:** native Docker Engine inside WSL Ubuntu (not Docker Desktop), so NetBird and Docker share one network.
+
+## 3. NetBird on every machine
+
+```bash
+curl -fsSL https://pkgs.netbird.io/install.sh | sh
+sudo netbird up --setup-key <SETUP-KEY>      # never paste the key into files or logs
+netbird status                               # note this machine's 100.93.x.x address
+```
+
+In the NetBird dashboard, put all three peers in the group `ha-swarm`, with a policy that lets the group talk to itself.
+NetBird's interface is `wt0`, with MTU 1280. Swarm's overlay adds 50 bytes, which is why the stack's networks use MTU **1230**.
+
+## 4. Start Docker only after NetBird (both VMs)
+
+Swarm listens on the NetBird address, so Docker must wait for `wt0` after a reboot.
+Create `/etc/systemd/system/docker.service.d/after-netbird.conf`:
+
+```ini
+[Unit]
+After=netbird.service
+Wants=netbird.service
+[Service]
+ExecStartPre=/bin/sh -c 'for i in $(seq 60); do ip -4 addr show wt0 2>/dev/null | grep -q inet && exit 0; sleep 1; done; exit 0'
+```
+
+Then run `sudo systemctl daemon-reload`. The change takes effect the next time Docker starts. **Don't restart Docker on Mumbai casually.**
+
+## 5. Hostnames (optional)
+
+Renaming a VM in the Oracle console doesn't change its Linux hostname, and cloud-init resets the hostname at boot.
+Hyderabad was renamed to `oci-hyderabad` with `/etc/cloud/cloud.cfg.d/99-hostname.cfg`:
+
+```yaml
+preserve_hostname: true
+hostname: oci-hyderabad
+fqdn: oci-hyderabad
+```
+
+To finish, run `sudo hostnamectl set-hostname oci-hyderabad`, fix the `127.0.1.1` line in `/etc/hosts`, then restart Docker so Swarm picks up the new name.
+
+## 6. Create the Swarm (on Mumbai)
+
+```bash
+sudo docker swarm init \
+  --advertise-addr 100.93.145.73 --listen-addr 100.93.145.73:2377 \
+  --default-addr-pool 10.200.0.0/16
+sudo docker swarm join-token manager       # prints the join command; keep the token private
+```
+
+`--default-addr-pool 10.200.0.0/16`: Swarm's default overlay range overlaps with the VMs' Oracle network (`10.0.0.x`), which breaks routing.
+
+## 7. Join the other two as managers
+
+On Hyderabad (use the PC's own NetBird IP when joining from the PC):
+
+```bash
+sudo docker swarm join --token <MANAGER-TOKEN> \
+  --advertise-addr 100.93.253.177 --listen-addr 100.93.253.177:2377 \
+  100.93.145.73:2377
+```
+
+## 8. Labels and drain (on any manager)
+
+```bash
+sudo docker node update --label-add region=mumbai    instance-20260319-0225
+sudo docker node update --label-add region=hyderabad oci-hyderabad
+sudo docker node update --availability drain <pc-hostname>  # the PC votes but runs no containers
+sudo docker node ls                                      # expect 3 managers, 1 Leader
+```
+
+## 9. First deploy (from the PC)
+
+```bash
+cp scripts/env.example scripts/.env     # fill in SSH keys and IPs
+bash scripts/release.sh 1.0             # build on Mumbai, copy to Hyderabad, deploy stack "market"
+bash scripts/status.sh
+```
+
+Then open `http://<either VM IP>:18080`.

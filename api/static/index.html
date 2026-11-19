@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HA Market Feed Lab</title>
+  <style>
+    :root {font-family:system-ui,Segoe UI,Arial,sans-serif;color-scheme:dark;background:#0b1120;color:#e2e8f0}
+    body {margin:0; padding:26px; max-width:1150px; margin-inline:auto}
+    h1 {font-size:clamp(22px,4vw,35px);margin:0 0 6px}
+    p {color:#a1abc0;line-height:1.55}
+    .top {display:flex; justify-content:space-between;gap:12px; flex-wrap:wrap; align-items:start}
+    .flag {background:#362920;color:#f6c475;border:1px solid #aa6c33;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:700}
+    .cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin:22px 0}
+    .card, .panel {background:#121b30;border:1px solid #25324b;border-radius:13px;padding:17px}
+    .label {font-size:12px;color:#91a2be;margin-bottom:9px}.value {font-size:21px;font-weight:750;font-variant-numeric:tabular-nums}
+    .indicator {display:inline-block;width:9px;height:9px;border-radius:50%;background:#eaa345;margin-right:7px}
+    .indicator.live {background:#38cb98} .indicator.off {background:#f36f78}
+    table {border-collapse:collapse;width:100%; font-variant-numeric:tabular-nums}
+    td,th {border-bottom:1px solid #27344a;padding:11px 9px;text-align:left}
+    th {font-size:12px;color:#91a2be;font-weight:600} td {font-size:14px}
+    .up {color:#52d5a6}.down {color:#fb7e8a}
+    .panel h2 {margin:0 0 14px;font-size:17px}.layout {display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
+    #log {height:250px;overflow:auto;white-space:pre;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.8;color:#c4d1e2}
+    canvas {display:block;width:100%;height:250px;background:#0e1728;border-radius:10px}
+    .notes {font-size:12px;margin-top:20px;color:#98a8c3}
+    @media(max-width:740px){.layout{grid-template-columns:1fr}body{padding:15px}}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <h1>HA Market Data Streaming Lab</h1>
+      <p>Docker Swarm on Oracle Cloud: HAProxy on Mumbai and Hyderabad → four WebSocket APIs (two per VM) → Redis Pub/Sub.</p>
+    </div>
+    <span class="flag">SIMULATED DATA · NOT LIVE NSE</span>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">WebSocket</div><div class="value"><span class="indicator" id="indicator"></span><span id="conn">Connecting</span></div></div>
+    <div class="card"><div class="label">Current HAProxy</div><div class="value" id="lb">–</div></div>
+    <div class="card"><div class="label">Connected API replica</div><div class="value" id="api">–</div></div>
+    <div class="card"><div class="label">Ticks received</div><div class="value" id="count">0</div></div>
+  </div>
+  <div class="panel" style="margin-bottom:14px">
+    <h2>Simulated prices</h2>
+    <table><thead><tr><th>Instrument</th><th>Last</th><th>Bid</th><th>Ask</th><th>Change from demo start</th><th>Seq</th></tr></thead><tbody id="market"></tbody></table>
+  </div>
+  <div class="layout">
+    <div class="panel"><h2>Recent NIFTY ticks</h2><canvas id="chart"></canvas></div>
+    <div class="panel"><h2>WebSocket message log</h2><div id="log" role="log" aria-live="off"></div></div>
+  </div>
+  <p class="notes">Both VM addresses serve this same page; "Current HAProxy" shows which VM's load balancer answered. Try stopping an API container while watching: if your WebSocket was on it, the page reconnects through another API within a few seconds and Swarm starts a replacement. Redis Pub/Sub is transient: missed ticks are not replayed. All prices here are fabricated.</p>
+<script>
+  const $ = id => document.getElementById(id);
+  const symbols = ['NIFTY','BANKNIFTY','RELIANCE'];
+  const state = {};
+  let n = 0, ws, retryTimer, lastTickAt = Date.now();
+  const points = [];
+  function row(t) {
+    state[t.symbol] = t;
+    $('market').innerHTML = symbols.map(s => {
+      const x=state[s]; if(!x || typeof x.price !== 'number') return `<tr><td>${s}</td><td colspan="5">Waiting for ticks...</td></tr>`;
+      return `<tr><td><b>${s}</b></td><td>${x.price.toFixed(2)}</td><td>${x.bid.toFixed(2)}</td><td>${x.ask.toFixed(2)}</td><td class="${x.change_pct>=0?'up':'down'}">${x.change_pct>=0?'+':''}${x.change_pct.toFixed(3)}%</td><td>${x.sequence}</td></tr>`;
+    }).join('');
+  }
+  function log(message) { const target=$('log'); target.textContent=message+'\n'+target.textContent.slice(0,9000); }
+  function plot() {
+    const c=$('chart'), ctx=c.getContext('2d'), dpr=window.devicePixelRatio||1;
+    const w=c.clientWidth, h=c.clientHeight;
+    c.width=Math.round(w*dpr); c.height=Math.round(h*dpr); ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,w,h); ctx.fillStyle='#0e1728';ctx.fillRect(0,0,w,h);
+    if(points.length<2)return;
+    const lo=Math.min(...points),hi=Math.max(...points),pad=Math.max(1,(hi-lo)*.15);
+    ctx.strokeStyle='#2d3c55';ctx.lineWidth=1;
+    for(let j=1;j<=3;j++){const y=h*j/4;ctx.beginPath();ctx.moveTo(10,y);ctx.lineTo(w-10,y);ctx.stroke()}
+    ctx.strokeStyle='#49d6af';ctx.lineWidth=2;ctx.beginPath();
+    points.forEach((p,i)=>{const x=12+(w-24)*i/(points.length-1);const y=h-12-(h-24)*(p-lo+pad)/(hi-lo+2*pad);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});
+    ctx.stroke();ctx.fillStyle='#a7b4cf';ctx.font='12px system-ui';ctx.fillText(`NIFTY ${points[points.length-1].toFixed(2)} (demo)`,12,18);
+  }
+  // "api-3 @ oci-hyderabad": which API replica, on which VM.
+  const apiLabel = (api, region) => region ? `${api} @ ${region}` : api;
+  async function refreshIdentity(){
+    try {
+      const r=await fetch('/whoami',{cache:'no-store'}); const x=await r.json();
+      // X-LB-Node is set by HAProxy (swarm/haproxy-swarm.cfg) to the VM it runs on.
+      $('lb').textContent = r.headers.get('X-LB-Node')||'Unknown';
+      if (x.served_by && (!ws || ws.readyState !== WebSocket.OPEN)) $('api').textContent=apiLabel(x.served_by, x.region);
+    } catch { $('lb').textContent='Reconnecting'; }
+  }
+  function connect(){
+    clearTimeout(retryTimer);
+    $('conn').textContent='Connecting';$('indicator').className='indicator';
+    const url=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/market';
+    ws=new WebSocket(url);
+    ws.onopen=()=>{lastTickAt=Date.now();$('conn').textContent='Live';$('indicator').className='indicator live';refreshIdentity();};
+    ws.onmessage=e=>{
+      let t;try{t=JSON.parse(e.data)}catch{return}
+      if(t.type==='hello'){$('api').textContent=apiLabel(t.api,t.region);log('Connected to '+apiLabel(t.api,t.region));return}
+      if(t.type!=='tick')return;
+      lastTickAt=Date.now();
+      n++;$('count').textContent=n.toLocaleString();row(t);
+      if(t.symbol==='NIFTY'){points.push(t.price);if(points.length>75)points.shift();plot()}
+      log(`${t.sequence}  ${t.symbol.padEnd(10)} ${t.price.toFixed(2)}  via ${$('api').textContent}`);
+    };
+    ws.onclose=()=>{$('conn').textContent='Disconnected';$('indicator').className='indicator off';log('Socket closed; retry in 2 seconds');retryTimer=setTimeout(connect,2000)};
+    ws.onerror=()=>ws.close();
+  }
+  row({symbol:'NIFTY'});
+  connect();setInterval(refreshIdentity,2500);
+  // A WebSocket can stall without a close frame (VM or network failure between the VMs).
+  // Reconnect if live ticks are absent for five seconds.
+  setInterval(()=>{if(ws && ws.readyState === WebSocket.OPEN && Date.now()-lastTickAt>5000){log('No ticks for 5s; reconnecting');ws.close()}},1000);
+  window.addEventListener('resize',plot);
+</script>
+</body>
+</html>

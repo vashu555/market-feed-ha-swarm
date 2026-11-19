@@ -1,0 +1,114 @@
+# The market feed stack: 3 Swarm managers joined over NetBird.
+#   Mumbai VM    (label region=mumbai)     runs containers
+#   Hyderabad VM (label region=hyderabad)  runs containers
+#   PC / WSL     (drained)                 votes only, runs nothing
+# Services: 2 HAProxy (one per VM, mode: global) + 4 APIs (2 per VM) + 1 Redis + 1 generator.
+#
+# Images: there is no registry. They are BUILT ONCE on Mumbai and COPIED to Hyderabad
+# (docker save | docker load), so both VMs run byte-identical images. Never build on each VM.
+# scripts/release.sh does build + copy + deploy in one go.
+#
+# Deploy from any manager, from the swarm/ folder. The stack name MUST be "market"
+# (haproxy-swarm.cfg looks up tasks.market_api):
+#   sudo MARKET_TAG=1.0 docker stack deploy -c stack.yaml --resolve-image never market
+# --resolve-image never: use the image already on each VM; don't look for it in a registry.
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks: [data_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    deploy:
+      replicas: 1
+      # No placement constraint on purpose: if its VM dies, Swarm restarts it on the other VM.
+      restart_policy: {condition: any, delay: 2s}
+    logging: *bounded-logging
+
+  generator:
+    image: market-generator:${MARKET_TAG:-1.0}
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MARKET_CHANNEL: market.ticks
+      TICK_INTERVAL_SECONDS: "0.25"
+    networks: [data_net]
+    deploy:
+      replicas: 1
+      restart_policy: {condition: any, delay: 2s}
+    logging: *bounded-logging
+
+  api:
+    image: market-api:${MARKET_TAG:-1.0}
+    environment:
+      INSTANCE_NAME: "api-{{.Task.Slot}}"
+      REGION: "{{.Node.Hostname}}"
+      REDIS_URL: redis://redis:6379/0
+      MARKET_CHANNEL: market.ticks
+    networks: [frontend_net, data_net]
+    # Liveness only (/whoami does not touch Redis). If this used /health, every API
+    # would be killed by Swarm while Redis is being moved to the other VM.
+    # Redis-aware checks are HAProxy's job (it checks /health).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/whoami', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 12s
+    deploy:
+      replicas: 4
+      placement:
+        # Exactly 2 per VM (1 LB + 2 APIs per VM). "spread" alone gave 3+1 in practice.
+        # If a VM dies, its 2 API tasks stay "pending" and the survivor's 2 APIs carry
+        # the traffic; Redis and the generator DO move to the survivor.
+        max_replicas_per_node: 2
+        preferences:
+          - spread: node.labels.region
+      # stop-first: with max 2 per node there is no free slot for an extra "start-first" task
+      # (it would sit Pending forever). One API at a time is replaced; 3 keep serving.
+      update_config: {parallelism: 1, delay: 5s, order: stop-first}
+      restart_policy: {condition: any, delay: 2s}
+    logging: *bounded-logging
+
+  haproxy:
+    image: haproxy:3.2.26-alpine
+    environment:
+      NODE_NAME: "{{.Node.Hostname}}"
+    configs:
+      - source: haproxy_cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    ports:
+      # mode: host = this VM's own HAProxy answers on this VM's port (no Swarm routing mesh).
+      # 80/443 are left alone: nginx (website) owns them on Mumbai.
+      - {target: 8080, published: 18080, protocol: tcp, mode: host}
+      - {target: 8404, published: 18404, protocol: tcp, mode: host}
+    networks: [frontend_net]
+    deploy:
+      mode: global            # one per active node; the drained PC gets none
+      restart_policy: {condition: any, delay: 2s}
+    logging: *bounded-logging
+
+networks:
+  # NetBird (WireGuard) MTU is 1280; VXLAN adds 50 bytes.
+  frontend_net:
+    driver: overlay
+    driver_opts: {com.docker.network.driver.mtu: "1230"}
+  data_net:
+    driver: overlay
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "1230"}
+
+configs:
+  haproxy_cfg:
+    # Swarm configs are immutable: when you edit the file, bump this name (v2, v3...).
+    name: market_haproxy_v1
+    file: ./haproxy-swarm.cfg
