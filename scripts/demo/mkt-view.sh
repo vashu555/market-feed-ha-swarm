@@ -4,16 +4,17 @@
 #   bash mkt-view.sh loop   -> redraw every second (open-views.ps1 runs this on each machine)
 # Every command has a time limit, so one stuck call can never freeze the window.
 if [ "$1" = loop ]; then
-  # Not `watch`: watch redraws only the parts it thinks changed, and the Windows console leaves old text behind
-  # (doubled lines, "hourslthy)"). Here each frame is built first, then the WHOLE screen is wiped and reprinted,
-  # trimmed to the window so nothing wraps or scrolls.
+  # Not `watch` (it left ghost text in the Windows console) and no "clear screen" (Windows scrolls the old view away,
+  # so every refresh jumps). Instead each frame is built first, then written OVER the previous one in place:
+  # cursor to top-left, every line followed by "erase rest of line", then "erase everything below".
+  # Trimmed to the window, so nothing wraps or scrolls. No flicker, no shifting, no leftovers.
   trap : INT                              # Ctrl+C interrupts the current frame only; the loop carries on = a refresh
-  printf '\033[?25l'                      # hide the cursor
+  printf '\033[2J\033[?25l'               # clear once at start, hide the cursor
   while :; do
     frame=$(bash "$0" 2>&1)
     rows=$(tput lines 2>/dev/null || echo 40); cols=$(tput cols 2>/dev/null || echo 100)
-    printf '\033[H\033[2J\033[3J'         # cursor home, clear screen, clear scrollback
-    printf '%s\n' "$frame" | cut -c1-"$cols" | head -n $((rows - 1))
+    out=$(printf '%s\n' "$frame" | cut -c1-$((cols - 1)) | head -n $((rows - 1)) | sed 's/$/\x1b[K/')
+    printf '\033[H%s\n\033[J' "$out"      # home, overwrite lines, erase below
     sleep 1
   done
 fi
