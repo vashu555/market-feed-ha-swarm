@@ -103,3 +103,11 @@ bash scripts/status.sh
 ```
 
 Then open `http://<either VM IP>:18080`.
+
+## 10. One HTTPS address (Cloudflare Tunnel)
+
+The stack's `tunnel` service needs the Swarm secret `cf_tunnel_token` before you deploy. Full steps, and the reasons behind each setting, are in [docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md). In short:
+
+1. In Cloudflare **Zero Trust → Networks → Tunnels**, create the tunnel `market-feed` and copy its token. Add the hostname `market.<your-domain>` → **HTTP** `localhost:18080`.
+2. Run `scripts\demo\set-tunnel-token.ps1` and paste the token at the hidden prompt.
+3. Run `bash scripts/deploy.sh`, then `bash scripts/status.sh` (expect `tunnel 2/2`).

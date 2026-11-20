@@ -29,7 +29,7 @@ Each HAProxy also sends users to the other VM's APIs, and Swarm may move Redis o
 | `oci-hyderabad` | 129.225.106.211 | 100.93.253.177 | Manager, active | 1 HAProxy, 2 APIs, plus whatever Swarm places there |
 | `micro-lb-2` (Oracle Always Free micro, 1 GB) | 130.210.102.140 | 100.93.99.47 | Manager, **drained** | Nothing: it is the tie-breaking vote |
 
-Open the dashboard at **http://155.248.248.83:18080** or **http://129.225.106.211:18080**.
+Open the dashboard at **https://market.<your-domain>**. Cloudflare Tunnel sends you to whichever VM is alive; see [CLOUDFLARE-TUNNEL.md](CLOUDFLARE-TUNNEL.md). Each VM also answers directly at **http://155.248.248.83:18080** and **http://129.225.106.211:18080**.
 
 Both VMs are Oracle Cloud ARM machines (4 CPU, 23 GB, Ubuntu 24.04). Only TCP 18080 is open to the internet; all Swarm traffic runs inside NetBird.
 
@@ -64,7 +64,7 @@ In every case below, nobody types a repair command: Swarm and the app's retry co
 
 ## Limits today
 
-- **Two addresses, not one.** Each VM has its own address; if one VM dies, users must switch by hand. Keepalived can't float an IP between Oracle regions; Cloudflare Tunnel on a domain would fix this.
+- **The public name depends on Cloudflare.** https://market.<your-domain> survives the loss of either VM, but not a Cloudflare outage; the direct IP addresses remain as a fallback. Cloudflare checks only that a connector is linked, not the app's health.
 - **The voter shares Mumbai's region.** It's always on (unlike the old PC), but a Mumbai region outage would remove 2 of 3 votes. A voter in a third location would fix this.
 - **Generator and Redis on different VMs.** If the NetBird link between the VMs breaks, prices freeze everywhere. Planned fix: one generator publishing to a Redis on each VM.
 - **Missed prices are not replayed.** Redis Pub/Sub keeps nothing, and a restarted generator starts from its opening values.

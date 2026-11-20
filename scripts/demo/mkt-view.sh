@@ -47,6 +47,11 @@ else
            --format '{{.ManagerStatus.Leader}} {{.ManagerStatus.Addr}}' 2>/dev/null | awk '$1=="true"{split($2,a,":"); print a[1]}')
   U=http://${LEADER:-127.0.0.1}:18080
 fi
+if t docker ps -q --filter name=market_tunnel | grep -q .; then
+  # cloudflared's /ready: {"status":200,"readyConnections":4,...} when linked to Cloudflare's edge.
+  rc=$(curl -s -m 1 http://127.0.0.1:20290/ready | grep -o '"readyConnections":[0-9]*' | cut -d: -f2)
+  echo; echo "--- Cloudflare tunnel connector: ${rc:-0} live links to Cloudflare $([ "${rc:-0}" -gt 0 ] && echo '(serving the public name)' || echo '(NOT connected)')"
+fi
 feed=$(curl -s -m 1 $U/whoami | grep -o '"served_by":"[^"]*"\|"last_market_sequence_here":[0-9]*' | sed 's/"served_by"://; s/"last_market_sequence_here":/tick #/' | tr '\n' ' ')
 echo; echo "--- Live feed: ${feed:-(no answer)}"
 echo; echo "--- Events ON THIS MACHINE (last 3 min) ---"

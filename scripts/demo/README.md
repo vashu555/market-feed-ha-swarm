@@ -15,7 +15,8 @@ powershell -ExecutionPolicy Bypass -File scripts\demo\open-views.ps1
 |---|---|
 | `mkt-view.sh` | Read-only snapshot from one machine: managers, services, every API copy, containers on this machine, which API slots this VM's HAProxy sees UP, the live feed, recent events, NetBird peers. Redraws the whole screen every second (`loop` mode); Ctrl+C refreshes instead of closing. |
 | `open-views.ps1` | Copies `mkt-view.sh` to `/var/tmp` on all three machines and opens the windows side by side. |
-| `control-panel.ps1` | Menu. **S** status (managers, leader, placement); **D** open both dashboards; **1–5** stop api-3, api-1, the generator, Redis, or Hyderabad's HAProxy; **6** rolling restart; **7/8** drain or reactivate Hyderabad (a lost VM); **9/10** stop or start the voter's Docker (2 of 3 managers still form a majority). Swarm commands go to whichever manager answers first, so the panel still works if Mumbai is down. Touches only the market lab. |
+| `set-tunnel-token.ps1` | One-time setup: asks for the Cloudflare Tunnel token at a hidden prompt and stores it as the Swarm secret `cf_tunnel_token` (see docs/CLOUDFLARE-TUNNEL.md). |
+| `control-panel.ps1` | Menu. **S** status (managers, leader, placement); **D** open the dashboards (`PUBLIC_URLS`, including https://market.<your-domain>); **1–5** stop api-3, api-1, the generator, Redis, or Hyderabad's HAProxy; **6** rolling restart; **T** stop Mumbai's Cloudflare Tunnel connector (the HTTPS name keeps working via Hyderabad); **7/8** drain or reactivate Hyderabad (a lost VM); **9/10** stop or start the voter's Docker (2 of 3 managers still form a majority). Swarm commands go to whichever manager answers first, so the panel still works if Mumbai is down. Touches only the market lab. |
 | `common.ps1` | Reads `scripts/.env` and defines the SSH helpers. |
 
 Needs `MICRO_KEY`/`MICRO_HOST` in `scripts/.env`. Optional keys: `MUMBAI_NODE`, `HYDERABAD_NODE`, `MICRO_NODE` (Swarm hostnames).

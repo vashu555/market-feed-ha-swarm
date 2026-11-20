@@ -1,8 +1,12 @@
 # The market feed stack: 3 Swarm managers joined over NetBird.
 #   Mumbai VM    (label region=mumbai)     runs containers
 #   Hyderabad VM (label region=hyderabad)  runs containers
-#   PC / WSL     (drained)                 votes only, runs nothing
-# Services: 2 HAProxy (one per VM, mode: global) + 4 APIs (2 per VM) + 1 Redis + 1 generator.
+#   micro-lb-2   (drained)                 votes only, runs nothing
+# Services: 2 HAProxy (one per VM, mode: global) + 4 APIs (2 per VM) + 1 Redis + 1 generator
+#           + 2 Cloudflare Tunnel connectors (one per VM, mode: global) for https://market.<your-domain>
+#
+# The tunnel needs a Swarm secret BEFORE the first deploy (see docs/CLOUDFLARE-TUNNEL.md):
+#   scripts/demo/set-tunnel-token.ps1   (asks for the token without showing it, creates cf_tunnel_token)
 #
 # Images: there is no registry. They are BUILT ONCE on Mumbai and COPIED to Hyderabad
 # (docker save | docker load), so both VMs run byte-identical images. Never build on each VM.
@@ -93,11 +97,36 @@ services:
       - {target: 8404, published: 18404, protocol: tcp, mode: host}
     networks: [frontend_net]
     deploy:
-      mode: global            # one per active node; the drained PC gets none
+      mode: global            # one per active node; the drained micro VM gets none
       restart_policy: {condition: any, delay: 2s}
     logging: *bounded-logging
 
+  # Cloudflare Tunnel: one public HTTPS name (market.<your-domain>) for both VMs.
+  # Each VM runs one connector. Both connect OUT to Cloudflare (no inbound port, no 80/443),
+  # under the same tunnel, so Cloudflare sends visitors to whichever connector is alive.
+  # Each connector forwards to its own VM's HAProxy (localhost:18080), which still spreads
+  # users across all 4 APIs. The route "market.<your-domain> -> http://localhost:18080" is set in
+  # the Cloudflare dashboard, not here.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    # --token-file: the token is read from a Swarm secret (encrypted in Swarm, mounted in memory),
+    #   so it never appears in this file, in `docker service inspect` or in a process list.
+    # --metrics on 127.0.0.1 only: the default would listen on all interfaces of the host.
+    #   http://127.0.0.1:20290/ready answers 200 when the connector has live links to Cloudflare.
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20290",
+              "run", "--token-file", "/run/secrets/cf_tunnel_token"]
+    secrets: [cf_tunnel_token]
+    # The host's own network, so "localhost:18080" is this VM's HAProxy (published in host mode).
+    networks: [hostnet]
+    deploy:
+      mode: global            # one connector per active VM; the drained micro VM gets none
+      restart_policy: {condition: any, delay: 5s}
+    logging: *bounded-logging
+
 networks:
+  hostnet:
+    external: true
+    name: host
   # NetBird (WireGuard) MTU is 1280; VXLAN adds 50 bytes.
   frontend_net:
     driver: overlay
@@ -112,3 +141,10 @@ configs:
     # Swarm configs are immutable: when you edit the file, bump this name (v2, v3...).
     name: market_haproxy_v1
     file: ./haproxy-swarm.cfg
+
+secrets:
+  cf_tunnel_token:
+    # Created once, outside this file, by scripts/demo/set-tunnel-token.ps1.
+    # Secrets are immutable too: to rotate, create cf_tunnel_token_v2 and change this name.
+    external: true
+    name: cf_tunnel_token

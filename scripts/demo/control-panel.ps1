@@ -36,7 +36,7 @@ while ($true) {
   Write-Host ""
   Write-Host "================ DEMO CONTROL PANEL (market lab only) ================" -ForegroundColor Cyan
   Write-Host " S  Status: managers, leader, services, placement"
-  Write-Host " D  Open both public dashboards in the browser"
+  Write-Host " D  Open the public dashboards in the browser (PUBLIC_URLS in scripts\.env)"
   Write-Host " --- break a container ---"
   Write-Host " 1  Stop api-3 (Hyderabad)        -> HAProxy marks it DOWN, Swarm starts a new api-3"
   Write-Host " 2  Stop api-1 (Mumbai)           -> same, on Mumbai"
@@ -44,6 +44,7 @@ while ($true) {
   Write-Host " 4  Stop Redis                    -> ticks stop, APIs go DOWN in HAProxy, then recover"
   Write-Host " 5  Stop Hyderabad's HAProxy      -> Hyderabad's address fails until Swarm restarts it"
   Write-Host " 6  Rolling restart of all 4 APIs -> one at a time, 3 keep serving (like a release)"
+  Write-Host " T  Stop Mumbai's tunnel connector -> https://market.<your-domain> keeps working via Hyderabad's"
   Write-Host " --- lose a machine ---"
   Write-Host " 7  'Kill' Hyderabad: DRAIN it    -> everything moves to Mumbai (VM failure, no power-off)"
   Write-Host " 8  Bring Hyderabad back (ACTIVE) -> its APIs + HAProxy return"
@@ -59,6 +60,7 @@ while ($true) {
     "3" { StopOne "market_generator" $null "the generator" }
     "4" { StopOne "market_redis" $null "Redis" }
     "5" { StopOne "market_haproxy" @{Node=$HYD; Name="market_haproxy."} "Hyderabad's HAProxy" }
+    "T" { StopOne "market_tunnel" @{Node=$MUM; Name="market_tunnel."} "Mumbai's Cloudflare Tunnel connector" }
     "6" { Write-Host "Rolling restart of market_api ..." -ForegroundColor Yellow
           Mgr "sudo docker service update --force --detach market_api >/dev/null && echo started: APIs will be replaced one by one" }
     "7" { $ok = Read-Host "Hyderabad's address will stop answering until you choose 8. Type YES to drain"
@@ -69,6 +71,6 @@ while ($true) {
     "10" { Write-Host "Starting the voter's Docker (it first waits until a VM answers through NetBird) ..." -ForegroundColor Yellow
            On $MIC "sudo systemctl start docker && echo voter Docker running"; Start-Sleep 5; Status }
     "Q" { exit }
-    default { Write-Host "Choose S, D, 1-10 or Q" }
+    default { Write-Host "Choose S, D, 1-10, T or Q" }
   }
 }
