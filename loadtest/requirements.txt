@@ -1,0 +1,7 @@
+# Load test for the market app. Python 3.10 or newer.
+#   python -m venv venv
+#   venv\Scripts\pip install -r requirements.txt      (Windows)
+#   venv/bin/pip install -r requirements.txt          (macOS / Linux)
+locust==2.37.10
+websocket-client==1.8.0
+psutil==7.2.2
