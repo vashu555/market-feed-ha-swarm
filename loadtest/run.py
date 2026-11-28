@@ -287,6 +287,7 @@ Per-VM names: {', '.join(meta['feeds'])}<br>Settings: {meta['settings']}<br>Test
 
 # ---------------------------------------------------------------------------------------------- main
 def main():
+    global WARMUP
     ap = argparse.ArgumentParser(description="Load test for the market app (see README.md).")
     ap.add_argument("--url", required=True, help="main address, e.g. https://market.example.com")
     ap.add_argument("--feeds", help="the two per-VM addresses, comma-separated (default: <name>-a / <name>-b of --url)")
@@ -298,9 +299,20 @@ def main():
     ap.add_argument("--order-every", type=float, default=20, help="seconds between one user's orders (default 20)")
     ap.add_argument("--spawn-rate", type=float, default=5, help="new users per second, all processes together (default 5)")
     ap.add_argument("--processes", type=int, help=f"Locust processes (default: one per {USERS_PER_PROCESS} users, at most CPUs - 1)")
+    ap.add_argument("--quick", action="store_true",
+                    help="1.5-minute test: 25 -> 50 -> 100 -> 150 users, 25 s each (overrides --steps/--users)")
+    ap.add_argument("--warmup", type=float, help=f"seconds left out of timings at the start of each step (default {WARMUP})")
     ap.add_argument("--out", default=os.path.join(HERE, "results"), help="results folder (default loadtest/results)")
+    ap.add_argument("--run-dir", help=argparse.SUPPRESS)          # exact folder for this run (used by the web page)
     ap.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     a = ap.parse_args()
+    if a.quick:
+        a.steps, a.users, a.step_minutes = "25,50,100,150", None, 25 / 60
+        a.order_every = min(a.order_every, 10)
+        a.spawn_rate = max(a.spawn_rate, 10)
+        WARMUP = 5
+    if a.warmup is not None:
+        WARMUP = a.warmup
 
     import importlib.util                     # (importing locust here would start gevent in this process)
     if not all(importlib.util.find_spec(m) for m in ("locust", "psutil", "websocket")):
@@ -316,7 +328,22 @@ def main():
     if peak / procs_n > 80:
         print(f"WARNING: {peak / procs_n:.0f} users per process; above ~60 this machine may become the bottleneck.")
 
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    out = a.run_dir or os.path.join(a.out, stamp)
+    os.makedirs(out, exist_ok=True)
+
+    def status(phase, **extra):
+        """status.json: read by the web page (ui.py) to show progress."""
+        s = {"phase": phase, "url": url, "feeds": feeds, "steps": steps, "step_seconds": step_s,
+             "warmup": WARMUP, "processes": procs_n, "updated": time.time(), **extra}
+        tmp = os.path.join(out, "status.json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(s, f)
+        os.replace(tmp, os.path.join(out, "status.json"))
+
+    status("checking")
     if not preflight(url, feeds):
+        status("failed", error="The site is not reachable on all three addresses (main, VM A, VM B).")
         sys.exit("The site is not reachable on all three names. Check --url / --feeds.")
     per10 = (peak / a.order_every) * 10 / 2 + a.spawn_rate * 10 / 2
     print(f"\nPlan: {' -> '.join(map(str, steps))} users, {step_s} s {'per step' if a.steps else ''}, "
@@ -325,11 +352,9 @@ def main():
     print(f"Each user keeps 2 live connections ({peak * 2} at the peak). From one IP that is ~{per10:.0f} requests "
           f"per 10 s per VM at the peak; this app allows 300 per 10 s per IP on each VM by default.")
     if not a.yes and input("Start? [y/N] ").strip().lower() != "y":
+        status("failed", error="cancelled")
         sys.exit("Cancelled.")
 
-    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    out = os.path.join(a.out, stamp)
-    os.makedirs(out, exist_ok=True)
     env = dict(os.environ, ORDER_EVERY=str(a.order_every), PYTHONUNBUFFERED="1")
     if a.feeds:
         env["FEED_HOSTS"] = ",".join(feeds)
@@ -349,6 +374,7 @@ def main():
         procs.append(subprocess.Popen(cmd, env=e, stdout=open(os.path.join(out, f"p{i + 1}.log"), "w"),
                                       stderr=subprocess.STDOUT, cwd=HERE))
     total = step_s * len(steps)
+    status("running", started=t0, total_seconds=total)
     print(f"Running for {total // 60} min {total % 60} s. Results: {out}\n(Ctrl+C stops early; the report is still written.)")
 
     import threading
@@ -360,7 +386,9 @@ def main():
             el = time.time() - t0
             i = min(len(steps) - 1, int(el // step_s))
             print(f"\r  {el / 60:4.1f} min  step {i + 1}/{len(steps)} ({steps[i]} users)   ", end="", flush=True)
-            time.sleep(2)
+            if os.path.exists(os.path.join(out, "STOP")):          # the web page's Stop button
+                raise KeyboardInterrupt
+            time.sleep(1)
     except KeyboardInterrupt:
         print("\nStopping ...")
         for p in procs:
@@ -369,6 +397,7 @@ def main():
     done["v"] = True
     th.join(timeout=10)
     print()
+    status("report", started=t0, total_seconds=total)
 
     events = load_events(out)
     cpu = load_cpu(os.path.join(out, "client_cpu.csv"), t0)
@@ -392,6 +421,7 @@ def main():
               f"p95 {fmt_ms(r['order_p95_ms'])} | price gaps {r['price_gaps_over_1s']} | missed ticks {r['missed_tick_numbers']} "
               f"| test machine CPU max {r['machine_cpu_max']}% | {r['verdict']}")
     zipped = shutil.make_archive(out, "zip", out)
+    status("done", started=t0, total_seconds=total, ended=end, zip=zipped, report=os.path.join(out, "report.html"))
     print(f"\nReport: {os.path.join(out, 'report.html')}\nSend this file: {zipped}")
 
 

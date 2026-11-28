@@ -1,110 +1,85 @@
 # Load test kit
 
-Simulates many people using the market app at the same time and writes a report you can send back.
-**Only test a site whose owner asked you to.**
+Simulates many people using the market app at the same time, shows it live in your browser, and gives
+you a results file to send back. **Only test a site whose owner asked you to.**
 
 Each simulated user does what the real page does:
 
 - keeps **two live price connections**, one to each VM (`market-a.<domain>` and `market-b.<domain>`),
   shows each price once, and reconnects if a connection goes quiet for 2 s;
-- places a **buy order about every 20 s**, to the VM whose prices are freshest, and sends the same order
-  to the other VM if there is no answer within 0.3 s.
+- places **buy orders**, to the VM whose prices are freshest, and sends the same order to the other VM
+  if there is no answer within 0.3 s.
 
-## 1. Install (once)
+## Quick start (about 3 minutes in total)
 
-You need **Python 3.10 or newer** ([python.org](https://www.python.org/downloads/); on Windows tick
-"Add python.exe to PATH").
+1. Install **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/)
+   (on Windows tick **"Add python.exe to PATH"**).
+2. Download the repository as a ZIP (green **Code** button → **Download ZIP**, or
+   https://github.com/vashu555/market-feed-ha-swarm/archive/refs/heads/loadtest-kit.zip), unzip it,
+   and open the `loadtest` folder.
+3. Double-click:
+   - **Windows:** `start-windows.bat`
+   - **macOS:** `start-mac-linux.command` (if macOS blocks it: right-click → Open)
+   - **Linux:** run `bash start-mac-linux.command`
 
-Windows (PowerShell, in this `loadtest` folder):
+   The first time it installs what it needs (about 1 minute). Then a page opens in your browser.
+4. On the page: enter the **site address** you were given, keep **Quick** selected, press **Start test**.
+   It takes about **1.5 minutes** (25 → 50 → 100 → 150 users, 25 s each), with live numbers and charts.
+5. At the end press **Download results (.zip)** and **send that file** to whoever asked for the test.
 
-```powershell
-python -m venv venv
-venv\Scripts\pip install -r requirements.txt
-```
+Keep the black window open while the page is in use; closing it stops everything.
 
-macOS / Linux:
+## The page
+
+| Shows | Meaning | Healthy |
+|---|---|---|
+| Simulated users / live connections | how many users right now (2 connections each) | – |
+| Orders confirmed / failed | orders confirmed, and orders not confirmed within 6 s | 0 failed |
+| Order time (p95) | 95% of orders were confirmed within this time, click to confirmation | under 1 s |
+| Price gaps > 1 s | moments a user saw no new price for over a second (prices come 4 times a second) | about 0 |
+| Rate limited (429) | the site refused requests because they all come from your IP address | 0 |
+| Your computer's CPU | how busy **your** machine is | under 85% |
+
+The result table gives a verdict per step: **PASS** (no failed orders, p95 under 1 s, almost no price gaps,
+no missed price updates), **FAIL**, or **Inconclusive** (your computer was too busy to measure properly:
+close other programs and run again). **Open full report** shows the same with charts.
+
+Tests on the page: **Quick** (about 1.5 min, up to 150 users), **Standard** (about 15 min, up to 400 users),
+**Steady** (100 users for 5 min).
+
+## Command line (optional)
+
+The page runs `run.py`; you can also run it directly (after the first start, `venv` exists):
 
 ```bash
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+venv/bin/python run.py --url https://market.example.com --quick                 # macOS / Linux
+venv\Scripts\python run.py --url https://market.example.com --quick             # Windows
+venv\Scripts\python run.py --url https://market.example.com --steps 50,100,200 --step-minutes 3
+venv\Scripts\python run.py --url https://market.example.com --users 100 --minutes 10
 ```
 
-## 2. Run
+`python run.py --help` lists the options (`--order-every`, `--spawn-rate`, `--processes`, `--feeds`, `--warmup`).
+Results go to `results/<date-time>/` (report.html, report.md, summary.json) and `results/<date-time>.zip`.
 
-Replace the address with the one you were given. On macOS / Linux use `venv/bin/python` instead of
-`venv\Scripts\python`.
+## Good to know
 
-| Test | Command | Takes |
-|---|---|---|
-| **Smoke** (does everything work?) | `venv\Scripts\python run.py --url https://market.example.com --users 10 --minutes 1` | 1 min |
-| **Steady** (N users for a while) | `venv\Scripts\python run.py --url https://market.example.com --users 100 --minutes 10` | 10 min |
-| **Ramp** (find the limit) | `venv\Scripts\python run.py --url https://market.example.com --steps 50,100,150,200 --step-minutes 3` | 12 min |
-| **Soak** (long, steady) | `venv\Scripts\python run.py --url https://market.example.com --users 50 --minutes 60` | 1 hour |
-
-It first checks the three addresses answer (main, VM A, VM B), shows the plan and asks before starting
-(`--yes` skips the question). A line shows progress; **Ctrl+C** stops early and still writes the report.
-
-Other options (`python run.py --help`):
-
-| Option | Default | Meaning |
-|---|---|---|
-| `--order-every` | 20 | seconds between one user's orders (lower = more orders per second) |
-| `--spawn-rate` | 5 | new users per second while starting |
-| `--processes` | 1 per 40 users | Locust processes; more spreads the work over this machine's CPU cores |
-| `--feeds` | `<name>-a`, `<name>-b` of `--url` | the two per-VM addresses, if they are named differently |
-| `--out` | `loadtest/results` | where results go |
-
-## 3. Send the results
-
-At the end it prints two paths:
-
-- `results/<date-time>/report.html`: open it in a browser (table per step and charts over time);
-- `results/<date-time>.zip`: **send this file** (the report plus the raw data).
-
-The results contain only the site's address and timings, nothing about your machine except its OS
-and number of CPUs.
-
-## Reading the report
-
-| Column | Meaning | Healthy |
-|---|---|---|
-| Order p50 / p95 / p99 / max | time from "click" to "confirmed", as the user sees it | p95 under 1 s |
-| Failed | orders that were not confirmed within 6 s (with the reason) | 0 |
-| Resent | orders that needed the second VM (first answer slower than 0.3 s) | a few % |
-| Price gaps > 1 s | moments a user saw no new price for over a second (prices come 4 times a second) | about 0 |
-| Missed ticks | price updates a user never saw | 0 |
-| Test machine CPU | how busy **your** machine was | under 85% |
-
-**Verdict:** PASS = no failed orders, p95 under 1 s, almost no price gaps, no missed ticks.
-
-**"inconclusive"** means your machine was too busy (CPU at 85% or more): slow numbers may come from
-your machine, not the site. Close other programs, use fewer users or more `--processes`, or run on a
-bigger machine. Timings skip the first 20 s of each step, while connections open.
-
-## How many users can one machine simulate?
-
-Each user receives about 8 small messages a second (4 prices from each VM), so the test machine's
-CPU and internet connection are usually the limit, not the site:
-
-| Test machine | About |
-|---|---|
-| Laptop / home PC, home internet | 100–200 users |
-| 8-core cloud VM | 500–1,000 users |
-| More | several machines at the same time (each runs its own `run.py`; add up the results) |
-
-## Rate limit (expected)
-
-The app allows **300 requests per 10 s per IP address on each VM**, to stop abuse. All users simulated
-from one machine share its IP, so very high order rates (or many reconnects at once) get **HTTP 429**,
-which the report lists as "rate limited". Real users each have their own IP. Before printing
-the plan, `run.py` estimates the request rate; keep it under 300 or ask the site owner to allow your
-IP during the test.
+- **Your machine and connection set the ceiling.** Each user receives about 8 small messages a second.
+  A laptop on home or office internet handles roughly 100–200 users; for more, use an 8-core cloud VM, or
+  several machines at once (each runs its own test; add up the results).
+- **Run it from a different network than the servers' admins, if possible.** A busy office line drops
+  connections under load, and that shows up as price gaps that have nothing to do with the site.
+- **Rate limit.** The app allows 300 requests per 10 s per IP address on each VM. All simulated users share
+  your IP, so big tests can hit it ("Rate limited" on the page). The kit then waits 15–30 s before trying
+  again instead of hammering the site. For tests above ~200 users, ask the site owner to allow your IP.
+- The results contain the site's address and timings, and only your machine's OS and CPU count.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `run.py` | the runner: checks, starts the Locust processes, samples CPU, writes the report |
-| `ha_users.py` | the simulated user (Locust); can also be run with `locust -f ha_users.py` for Locust's web UI |
+| `start-windows.bat`, `start-mac-linux.command` | one-click start: installs on first run, opens the page |
+| `ui.py`, `ui.html` | the page (runs on your computer only, at http://127.0.0.1:8090) |
+| `run.py` | the test runner: checks the site, starts the simulated users, writes the report |
+| `ha_users.py` | the simulated user (Locust) |
 | `requirements.txt` | pinned libraries |
 | `legacy/` | older tests from before release 1.6 (one price connection per user, no orders) |

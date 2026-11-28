@@ -38,6 +38,7 @@ from locust import LoadTestShape, User, between, events, task
 
 ORDER_EVERY = float(os.getenv("ORDER_EVERY", "20"))
 RECONNECT_MAX = float(os.getenv("RECONNECT_MAX", "8"))
+RATE_LIMIT_PAUSE = float(os.getenv("RATE_LIMIT_PAUSE", "15"))   # after an HTTP 429: wait 15-30 s
 HEDGE_AFTER = 0.3          # the page resends to the other VM after 0.3 s without an answer
 GIVE_UP = 6.0              # the page gives up after 6 s
 SILENT = 2.0               # the page treats 2 s without a price as a dead connection
@@ -92,8 +93,13 @@ class PageUser(User):
             except Exception as e:
                 why = f"HTTP {e.status_code}" if isinstance(e, websocket.WebSocketBadStatusException) else type(e).__name__
                 event(f"connect:{name}", (time.perf_counter() - t0) * 1000, False, why)
-                gevent.sleep(min(RECONNECT_MAX, backoff) * random.uniform(0.7, 1.3))
-                backoff *= 2
+                if why == "HTTP 429":
+                    # Rate limited: every retry counts against this machine's IP, so retrying fast would keep
+                    # it locked out. Wait long and at a random moment, so users don't come back all at once.
+                    gevent.sleep(random.uniform(RATE_LIMIT_PAUSE, 2 * RATE_LIMIT_PAUSE))
+                else:
+                    gevent.sleep(min(RECONNECT_MAX, backoff) * random.uniform(0.7, 1.3))
+                    backoff *= 2
                 continue
             event(f"connect:{name}", (time.perf_counter() - t0) * 1000, True)
             backoff = 1.0
@@ -146,8 +152,8 @@ class PageUser(User):
 
     @task
     def order(self):
-        if not self.latest:
-            return
+        if not self.latest or time.time() < getattr(self, "orders_paused_until", 0):
+            return                                  # no prices yet, or rate limited a moment ago
         body = {"order_id": str(uuid.uuid4()), "symbol": self.latest["symbol"], "side": "BUY",
                 "tick_seq": self.latest["sequence"]}
         first = 0 if self.fresh[0] >= self.fresh[1] else 1
@@ -194,6 +200,8 @@ class PageUser(User):
         else:
             stats["fail"] += 1
             event("order", ms, False, result or "no answer in 6 s")
+            if result == "429 rate limited":
+                self.orders_paused_until = time.time() + random.uniform(RATE_LIMIT_PAUSE, 2 * RATE_LIMIT_PAUSE)
 
 
 # ---------------------------------------------------------------------- optional stepped ramp

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Load Test</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --fg: #111827; --mut: #6b7280; --line: #e5e7eb;
+  --accent: #2563eb; --accent-fg: #ffffff; --ok: #047857; --bad: #b91c1c; --warn: #b45309;
+  --ok-bg: #ecfdf5; --bad-bg: #fef2f2; --warn-bg: #fffbeb; --track: #e5e7eb;
+  --c1: #2563eb; --c2: #7c3aed; --c3: #b91c1c; --c4: #b45309; --c5: #0f766e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1120; --card: #111827; --fg: #e5e7eb; --mut: #94a3b8; --line: #1f2937;
+    --accent: #3b82f6; --accent-fg: #ffffff; --ok: #34d399; --bad: #f87171; --warn: #fbbf24;
+    --ok-bg: #052e22; --bad-bg: #3b0d0d; --warn-bg: #3a2a05; --track: #1f2937;
+    --c1: #60a5fa; --c2: #a78bfa; --c3: #f87171; --c4: #fbbf24; --c5: #2dd4bf; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 2px; letter-spacing: -0.01em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mut); margin: 0 0 12px; font-weight: 600; }
+.sub { color: var(--mut); margin: 0 0 20px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+label { display: block; font-size: 12px; color: var(--mut); margin-bottom: 4px; font-weight: 600; }
+input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%; }
+.f-url { flex: 2 1 320px; min-width: 0; } .f-preset { flex: 1 1 240px; min-width: 0; }
+button { font: inherit; font-weight: 600; border-radius: 8px; padding: 9px 18px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button:disabled { opacity: .5; cursor: default; }
+.note { color: var(--mut); font-size: 12px; margin: 10px 0 0; }
+.err { color: var(--bad); font-weight: 600; margin: 10px 0 0; }
+.phase { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-weight: 600; }
+.bar { height: 8px; background: var(--track); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; }
+.bar > div { height: 100%; width: 0; background: var(--accent); transition: width .8s linear; }
+.steps { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.step { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--mut); }
+.step.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.step.past { color: var(--fg); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.tile .k { font-size: 12px; color: var(--mut); }
+.tile .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .h { font-size: 11px; color: var(--mut); }
+.v.good { color: var(--ok); } .v.bad { color: var(--bad); } .v.warn { color: var(--warn); }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
+.chart h3 { font-size: 13px; margin: 0 0 6px; }
+.legend { font-size: 12px; color: var(--mut); display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+.legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+canvas { width: 100%; height: 190px; display: block; }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--mut); font-weight: 600; font-size: 12px; }
+.verdict { font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.verdict.PASS { color: var(--ok); background: var(--ok-bg); } .verdict.FAIL { color: var(--bad); background: var(--bad-bg); }
+.verdict.INC { color: var(--warn); background: var(--warn-bg); }
+.big { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+a.btn { text-decoration: none; display: inline-block; }
+details { margin-top: 6px; } summary { cursor: pointer; color: var(--mut); font-size: 12px; }
+pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; overflow-x: auto; margin: 8px 0 0; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Market load test</h1>
+  <p class="sub">Simulates many people using the market app at once: each keeps two live price connections and places orders. Only test a site whose owner asked you to.</p>
+
+  <section class="card">
+    <h2>Run a test</h2>
+    <div class="row">
+      <div class="f-url"><label for="url">Site address</label><input id="url" placeholder="https://market.example.com" autocomplete="off"></div>
+      <div class="f-preset"><label for="preset">Test</label><select id="preset"></select></div>
+      <div><button class="primary" id="start">Start test</button> <button id="stop" hidden>Stop</button></div>
+    </div>
+    <p class="err" id="err" hidden></p>
+    <p class="note">Keep this page and the black window open while the test runs. It checks the site first, then starts.</p>
+  </section>
+
+  <section class="card" id="live" hidden>
+    <div class="phase"><span id="phase">Starting…</span><span id="clock"></span></div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="steps" id="steps"></div>
+    <div class="tiles" style="margin-top:14px">
+      <div class="tile"><div class="k">Simulated users</div><div class="v" id="t-users">–</div><div class="h" id="t-conns">live connections: –</div></div>
+      <div class="tile"><div class="k">Orders confirmed</div><div class="v good" id="t-ok">0</div><div class="h" id="t-resent">resent to other VM: 0</div></div>
+      <div class="tile"><div class="k">Orders failed</div><div class="v" id="t-fail">0</div><div class="h">not confirmed within 6 s</div></div>
+      <div class="tile"><div class="k">Order time (p95, now)</div><div class="v" id="t-p95">–</div><div class="h">click → confirmed</div></div>
+      <div class="tile"><div class="k">Price gaps &gt; 1 s</div><div class="v" id="t-gaps">0</div><div class="h" id="t-missed">missed price updates: 0</div></div>
+      <div class="tile"><div class="k">Rate limited (429)</div><div class="v" id="t-rl">0</div><div class="h">site limit per IP address</div></div>
+      <div class="tile"><div class="k">Your computer's CPU</div><div class="v" id="t-cpu">–</div><div class="h">over 85% = results unreliable</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="chartsCard" hidden>
+    <div class="charts">
+      <div class="chart"><h3>Order time and users</h3>
+        <div class="legend"><span><i style="background:var(--c2)"></i>order time p95 (ms, left)</span><span><i style="background:var(--c1)"></i>users (right)</span></div>
+        <canvas id="c1"></canvas></div>
+      <div class="chart"><h3>Problems per 5 seconds</h3>
+        <div class="legend"><span><i style="background:var(--c3)"></i>failed orders</span><span><i style="background:var(--c4)"></i>price gaps</span><span><i style="background:var(--mut)"></i>rate limited</span><span><i style="background:var(--c5)"></i>your CPU % (right)</span></div>
+        <canvas id="c2"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <h2>Result</h2>
+    <p class="big" id="headline"></p>
+    <div class="wrap"><table>
+      <thead><tr><th>Step</th><th>Users</th><th>Orders confirmed</th><th>Failed</th><th>Order time p50 / p95 / max</th><th>Price gaps</th><th>Missed updates</th><th>Your CPU max</th><th>Verdict</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="note">PASS = no failed orders, 95% of orders confirmed within 1 s, almost no price gaps, no missed updates. "Inconclusive" = your computer was too busy to measure properly.</p>
+    <div class="actions">
+      <a class="btn" id="dl" href="/download"><button class="primary">Download results (.zip)</button></a>
+      <a class="btn" href="/report" target="_blank" rel="noopener"><button>Open full report</button></a>
+    </div>
+    <p class="note"><b>Send the .zip file</b> to the person who asked for the test.</p>
+  </section>
+
+  <details id="logbox" hidden><summary>Test log</summary><pre id="log"></pre></details>
+</main>
+<script>
+const CFG = /*CONFIG*/{};
+const $ = id => document.getElementById(id);
+const fmtMs = v => v == null ? "–" : (v >= 1000 ? (v / 1000).toFixed(2) + " s" : Math.round(v) + " ms");
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+for (const [k, label] of Object.entries(CFG.presets || {})) $("preset").add(new Option(label, k));
+try { $("url").value = CFG.url || localStorage.getItem("lt-url") || ""; } catch (e) { $("url").value = CFG.url || ""; }
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Token": CFG.token }, body: JSON.stringify(body || {}) });
+  return [r.ok, await r.json().catch(() => ({}))];
+}
+$("start").onclick = async () => {
+  $("err").hidden = true;
+  const url = $("url").value.trim();
+  try { localStorage.setItem("lt-url", url); } catch (e) {}
+  const [ok, res] = await post("/api/start", { url, preset: $("preset").value });
+  if (!ok) { $("err").textContent = res.error || "Could not start."; $("err").hidden = false; return; }
+  $("result").hidden = true; seen = null; poll();
+};
+$("stop").onclick = () => post("/api/stop");
+
+function draw(canvas, series, opts) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  const L = 44, R = 40, T = 8, B = 20, pw = w - L - R, ph = h - T - B;
+  const xmax = Math.max(opts.xmax || 1, 1);
+  const X = t => L + pw * Math.min(t, xmax) / xmax;
+  g.font = "11px system-ui, sans-serif"; g.fillStyle = css("--mut"); g.strokeStyle = css("--line"); g.lineWidth = 1;
+  const ylmax = Math.max(1, ...series.filter(s => !s.right).flatMap(s => s.pts.map(p => p[1] || 0))) * 1.15;
+  const yrmax = opts.rightMax || Math.max(1, ...series.filter(s => s.right).flatMap(s => s.pts.map(p => p[1] || 0))) * 1.15;
+  for (let i = 0; i <= 3; i++) {
+    const y = T + ph * i / 3; g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke();
+    g.textAlign = "right"; g.fillText(Math.round(ylmax * (3 - i) / 3), L - 6, y + 4);
+    if (series.some(s => s.right)) { g.textAlign = "left"; g.fillText(Math.round(yrmax * (3 - i) / 3), L + pw + 6, y + 4); }
+  }
+  g.textAlign = "center";
+  const stepT = xmax > 600 ? 120 : (xmax > 240 ? 60 : 20);
+  for (let t = 0; t <= xmax; t += stepT) g.fillText(Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"), X(t), h - 5);
+  for (const s of series) {
+    const Y = v => T + ph * (1 - Math.min(v, s.right ? yrmax : ylmax) / (s.right ? yrmax : ylmax));
+    g.strokeStyle = g.fillStyle = s.color;
+    if (s.bars) {
+      const bw = Math.max(2, pw / (xmax / 5) * 0.28);
+      for (const [t, v] of s.pts) if (v) g.fillRect(X(t) + (s.offset || 0) * bw, Y(v), bw, T + ph - Y(v));
+    } else {
+      g.lineWidth = 2; g.beginPath(); let started = false;
+      for (const [t, v] of s.pts) { if (v == null) { started = false; continue; } started ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v)); started = true; }
+      g.stroke();
+    }
+  }
+}
+
+let seen = null, timer = null;
+async function poll() {
+  clearTimeout(timer);
+  let s;
+  try { s = await (await fetch("/api/status")).json(); } catch (e) { timer = setTimeout(poll, 2000); return; }
+  render(s);
+  timer = setTimeout(poll, s.phase === "done" || s.phase === "failed" || s.phase === "idle" ? 5000 : 1000);
+}
+
+function render(s) {
+  const running = s.running || ["starting", "checking", "running", "report"].includes(s.phase);
+  $("start").disabled = running; $("stop").hidden = !running || s.phase === "report";
+  if (s.phase === "idle") return;
+  $("live").hidden = false; $("chartsCard").hidden = false; $("logbox").hidden = !(s.log || []).length;
+  $("log").textContent = (s.log || []).join("\n");
+  const total = s.total_seconds || (s.steps || []).length * (s.step_seconds || 0);
+  const el = s.started ? Math.max(0, (s.phase === "done" || s.phase === "report" ? (s.ended || Date.now() / 1000) : Date.now() / 1000) - s.started) : 0;
+  const idx = s.step_seconds ? Math.min((s.steps || []).length - 1, Math.floor(el / s.step_seconds)) : 0;
+  const label = { starting: "Starting…", checking: "Checking the site…", running: `Running: step ${idx + 1} of ${(s.steps || []).length} (${(s.steps || [])[idx]} users)`,
+                  report: "Writing the report…", done: "Finished", failed: "Stopped: " + (s.error || "error") }[s.phase] || s.phase;
+  $("phase").textContent = label;
+  $("clock").textContent = total ? `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, "0")} / ${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}` : "";
+  $("bar").style.width = total ? Math.min(100, 100 * el / total) + "%" : (s.phase === "done" ? "100%" : "0");
+  $("steps").innerHTML = (s.steps || []).map((u, i) => `<span class="step ${s.phase === "running" && i === idx ? "on" : (i < idx || s.phase === "done" ? "past" : "")}">${u} users</span>`).join("");
+  const t = s.totals || {};
+  $("t-users").textContent = s.users_now ?? "–"; $("t-conns").textContent = "live connections: " + (s.connections_now ?? "–");
+  $("t-ok").textContent = t.orders_ok ?? 0; $("t-resent").textContent = "resent to other VM: " + (t.resent ?? 0);
+  $("t-fail").textContent = t.orders_failed ?? 0; $("t-fail").className = "v " + (t.orders_failed ? "bad" : "good");
+  const last = (s.series || []).filter(x => x.p95 != null).slice(-2).map(x => x.p95);
+  const p95 = last.length ? Math.max(...last) : null;
+  $("t-p95").textContent = fmtMs(p95); $("t-p95").className = "v " + (p95 == null ? "" : p95 < 1000 ? "good" : "bad");
+  $("t-gaps").textContent = t.gaps ?? 0; $("t-gaps").className = "v " + (t.gaps ? "warn" : "good");
+  $("t-missed").textContent = "missed price updates: " + (t.missed ?? 0);
+  $("t-rl").textContent = t.rate_limited ?? 0; $("t-rl").className = "v " + (t.rate_limited ? "warn" : "good");
+  $("t-cpu").textContent = s.cpu_now == null ? "–" : Math.round(s.cpu_now) + "%";
+  $("t-cpu").className = "v " + (s.cpu_now == null ? "" : s.cpu_now >= 85 ? "bad" : "good");
+
+  const xmax = total || 60, ser = s.series || [];
+  const usersPts = []; // approximate users from the plan (steps), so the line is smooth
+  for (let x = 0; x <= Math.min(el, xmax); x += 5) usersPts.push([x, (s.steps || [])[Math.min((s.steps || []).length - 1, Math.floor(x / (s.step_seconds || 1)))]]);
+  draw($("c1"), [{ pts: ser.map(x => [x.t, x.p95]), color: css("--c2") }, { pts: usersPts, color: css("--c1"), right: true }], { xmax });
+  draw($("c2"), [{ pts: ser.map(x => [x.t, x.fail]), color: css("--c3"), bars: true, offset: -1 },
+                 { pts: ser.map(x => [x.t, x.gaps]), color: css("--c4"), bars: true, offset: 0 },
+                 { pts: ser.map(x => [x.t, x.rl]), color: css("--mut"), bars: true, offset: 1 },
+                 { pts: (s.cpu || []).map(x => [x.t, x.v]), color: css("--c5"), right: true }], { xmax, rightMax: 100 });
+
+  if (s.phase === "done" && s.summary && seen !== s.started) {
+    seen = s.started;
+    const res = s.summary.results || [];
+    $("rows").innerHTML = res.map(r => {
+      const v = r.verdict.startsWith("PASS") ? "PASS" : "FAIL", inc = r.verdict.includes("inconclusive");
+      return `<tr><td>${r.label}</td><td>${r.users}</td><td>${r.orders_confirmed}</td><td>${r.orders_failed}</td>
+        <td>${fmtMs(r.order_p50_ms)} / ${fmtMs(r.order_p95_ms)} / ${fmtMs(r.order_max_ms)}</td><td>${r.price_gaps_over_1s}</td>
+        <td>${r.missed_tick_numbers}</td><td>${r.machine_cpu_max ?? "–"}%</td>
+        <td><span class="verdict ${inc ? "INC" : v}" title="${r.verdict}">${inc ? "Inconclusive" : v}${r.verdict.includes("rate limited") ? " · rate limited" : ""}</span></td></tr>`;
+    }).join("");
+    const passed = res.filter(r => r.verdict.startsWith("PASS") && !r.verdict.includes("inconclusive"));
+    $("headline").textContent = !res.length ? "No results were recorded."
+      : passed.length === res.length ? `All ${res.length} steps passed: up to ${Math.max(...res.map(r => r.users))} users handled cleanly.`
+      : passed.length ? `Handled up to ${Math.max(...passed.map(r => r.users))} users cleanly; problems from ${res.find(r => !passed.includes(r)).users} users.`
+      : "Problems from the first step. See the table, and send the results.";
+    $("result").hidden = false;
+  }
+}
+window.addEventListener("resize", () => poll());
+poll();
+</script>
+</body>
+</html>
